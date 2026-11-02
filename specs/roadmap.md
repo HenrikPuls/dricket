@@ -10,7 +10,6 @@ the items below; milestone numbers are not used.
 Nothing. Stage v0 is next; items below in working order.
 
 ## Next
-- R-10 Store (stage v0, batch 2 of 3) — `internal/store`: git subprocess wrapper, fetch / check preconditions / commit / push loop with bounded retry and jitter, private working copy; `internal/profile` identity plumbing; integration tests against a local bare repo.
 - R-11 Core commands (stage v0, batch 3 of 3) — `internal/service` + CLI: add, claim, release, ls, show, comment, set, lint; prefix IDs allocated by push retry, stable paths, parent/depends, epoch/rev; docs/protocol.md.
 - R-3 Leases and checks (stage v1) — sizes, extend, leases, validate, next, search, inbox, epoch trailers, `dk doctor`.
 - R-4 Protection and roles (stage v2) — declarative schema in dricket.toml, path rules, role transitions, force-release, guide/init/setup-agent, profiles, quotas, secret scan.
