@@ -21,11 +21,12 @@ type NextOptions struct {
 
 // NextResult reports the chosen ticket and, with --claim, the claim.
 type NextResult struct {
-	ID    string       `json:"id"`
-	Title string       `json:"title"`
-	Stage string       `json:"stage"`
-	Epoch int          `json:"epoch"`
-	Claim *ClaimResult `json:"claim,omitempty"`
+	ID       string       `json:"id"`
+	Title    string       `json:"title"`
+	Stage    string       `json:"stage"`
+	Priority string       `json:"priority,omitempty"`
+	Epoch    int          `json:"epoch"`
+	Claim    *ClaimResult `json:"claim,omitempty"`
 }
 
 // eligible reports whether a ticket can be worked on now: free and open,
@@ -112,7 +113,7 @@ func (s *Service) Next(ctx context.Context, opts NextOptions) (*NextResult, erro
 	})
 	best := candidates[0]
 
-	res := &NextResult{ID: best.ID, Title: best.Title, Stage: string(best.Stage), Epoch: best.Epoch}
+	res := &NextResult{ID: best.ID, Title: best.Title, Stage: string(best.Stage), Priority: best.Priority, Epoch: best.Epoch}
 	if opts.Claim {
 		size := opts.Size
 		if size == "" {

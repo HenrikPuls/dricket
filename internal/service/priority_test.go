@@ -1,0 +1,107 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+package service
+
+import (
+	"context"
+	"testing"
+)
+
+func TestPriorityDefaultsAndValidation(t *testing.T) {
+	bare := setupBare(t)
+	ctx := context.Background()
+	alice := open(t, bare, "alice")
+
+	// Without a flag, the configured default (normal) is stored.
+	id, err := alice.Add(ctx, AddRequest{Prefix: "app", Title: "plain"})
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	tk := mustTicket(t, bareShow(t, bare, "tickets/app/0000/app-1/ticket.md"))
+	if tk.Priority != "normal" {
+		t.Errorf("priority = %q, want normal", tk.Priority)
+	}
+
+	// An explicit flag is stored (case-normalised).
+	if _, err := alice.Add(ctx, AddRequest{Prefix: "app", Title: "hot", Priority: "HIGH"}); err != nil {
+		t.Fatalf("add high: %v", err)
+	}
+	tk = mustTicket(t, bareShow(t, bare, "tickets/app/0000/app-2/ticket.md"))
+	if tk.Priority != "high" {
+		t.Errorf("priority = %q, want high", tk.Priority)
+	}
+
+	// An unknown value is refused with exit 14.
+	if _, err := alice.Add(ctx, AddRequest{Prefix: "app", Title: "x", Priority: "apocalyptic"}); ExitCode(err) != 14 {
+		t.Fatalf("add bogus priority err = %v, code %d; want 14", err, ExitCode(err))
+	}
+
+	// set can change the priority within the configured set.
+	if _, err := alice.Set(ctx, id, "priority", "critical", 0); err != nil {
+		t.Fatalf("set priority: %v", err)
+	}
+	tk = mustTicket(t, bareShow(t, bare, "tickets/app/0000/app-1/ticket.md"))
+	if tk.Priority != "critical" {
+		t.Errorf("priority after set = %q, want critical", tk.Priority)
+	}
+	if _, err := alice.Set(ctx, id, "priority", "bogus", 0); ExitCode(err) != 14 {
+		t.Fatalf("set bogus priority err = %v, code %d; want 14", err, ExitCode(err))
+	}
+}
+
+func TestPriorityFromConfig(t *testing.T) {
+	bare := setupBare(t)
+	pushMainFile(t, bare, "dricket.toml", `
+[priorities]
+values = ["urgent", "normal"]
+default = "urgent"
+`)
+	ctx := context.Background()
+	alice := open(t, bare, "alice")
+
+	// The custom default applies.
+	id, err := alice.Add(ctx, AddRequest{Prefix: "app", Title: "custom set"})
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	tk := mustTicket(t, bareShow(t, bare, "tickets/app/0000/app-1/ticket.md"))
+	if tk.Priority != "urgent" {
+		t.Fatalf("priority = %q, want urgent", tk.Priority)
+	}
+
+	// The starting set no longer applies.
+	if _, err := alice.Add(ctx, AddRequest{Prefix: "app", Title: "x", Priority: "high"}); ExitCode(err) != 14 {
+		t.Fatalf("add high outside custom set err = %v, code %d; want 14", err, ExitCode(err))
+	}
+	// A configured value works, also through set.
+	if _, err := alice.Set(ctx, id, "priority", "normal", 0); err != nil {
+		t.Fatalf("set normal: %v", err)
+	}
+}
+
+func TestPriorityVisibleInQueries(t *testing.T) {
+	bare := setupBare(t)
+	ctx := context.Background()
+	alice := open(t, bare, "alice")
+	if _, err := alice.Add(ctx, AddRequest{Prefix: "app", Title: "visible", Priority: "critical", Unclaimed: true}); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if _, err := alice.Add(ctx, AddRequest{Prefix: "app", Title: "low prio", Priority: "low", Unclaimed: true}); err != nil {
+		t.Fatalf("add low: %v", err)
+	}
+
+	items, _, err := alice.List(ctx, ListFilter{})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(items) != 2 || items[0].Priority != "critical" || items[1].Priority != "low" {
+		t.Fatalf("list priorities = %+v", items)
+	}
+
+	res, err := alice.Next(ctx, NextOptions{})
+	if err != nil || res.Priority != "critical" {
+		t.Fatalf("next = %+v, %v; want critical", res, err)
+	}
+	if res.Stage != "open" {
+		t.Errorf("next stage = %q, want open (no --claim)", res.Stage)
+	}
+}

@@ -29,6 +29,7 @@ type AddRequest struct {
 	Unclaimed   bool
 	Size        ticket.Size
 	Kind        ticket.Kind
+	Priority    string
 }
 
 // Add creates a ticket with an id allocated by push retry: the number is
@@ -50,6 +51,18 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (string, error) {
 	}
 	if err := s.checkQuota(ctx); err != nil {
 		return "", err
+	}
+	// The priority comes from the flag or the config's default value.
+	cfg, err := s.config(ctx)
+	if err != nil {
+		return "", err
+	}
+	priority := strings.ToLower(strings.TrimSpace(req.Priority))
+	if priority == "" {
+		priority = cfg.PriorityDefault
+	}
+	if err := cfg.CheckPriority(priority); err != nil {
+		return "", errf(KindInvalid, "%v", err)
 	}
 	if req.Size == "" {
 		req.Size = ticket.SizeM
@@ -91,6 +104,7 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (string, error) {
 				Stage:         ticket.StageOpen,
 				Kind:          req.Kind,
 				Size:          req.Size,
+				Priority:      priority,
 				Epoch:         0,
 				Rev:           0,
 				Labels:        req.Labels,
@@ -433,11 +447,6 @@ type SetResult struct {
 	Rev   int    `json:"rev"`
 }
 
-var freeFields = map[string]bool{
-	"title": true, "labels": true, "depends": true, "parent": true,
-	"touches": true, "branch": true, "repos": true,
-}
-
 // Set changes one free field. State and identity fields are rejected: they
 // change only through commands. IfVersion guards against races (exit 12).
 func (s *Service) Set(ctx context.Context, id, key, value string, ifVersion int) (SetResult, error) {
@@ -446,13 +455,27 @@ func (s *Service) Set(ctx context.Context, id, key, value string, ifVersion int)
 	if err != nil {
 		return SetResult{}, err
 	}
-	if !freeFields[key] {
-		if _, known := ticket.ClassOf(key); known {
-			return SetResult{}, errf(KindInvalid, "%s is not a free field; it changes only through a command", key)
-		}
+	// The field classes live in the ticket model; state and identity
+	// fields change only through commands.
+	cls, known := ticket.ClassOf(key)
+	if !known {
 		return SetResult{}, errf(KindInvalid, "unknown field %q", key)
 	}
+	if cls != ticket.Free {
+		return SetResult{}, errf(KindInvalid, "%s is not a free field; it changes only through a command", key)
+	}
 	value = sanitize(strings.TrimSpace(value), MaxBody)
+	if key == "priority" {
+		// The allowed values come from dricket.toml.
+		cfg, cerr := s.config(ctx)
+		if cerr != nil {
+			return SetResult{}, cerr
+		}
+		if err := cfg.CheckPriority(strings.ToLower(value)); err != nil {
+			return SetResult{}, errf(KindInvalid, "%v", err)
+		}
+		value = strings.ToLower(value)
+	}
 	if err := s.scanSecrets(ctx, value); err != nil {
 		return SetResult{}, err
 	}
@@ -497,6 +520,8 @@ func (s *Service) Set(ctx context.Context, id, key, value string, ifVersion int)
 				tk.Parent = strings.ToLower(value)
 			case "branch":
 				tk.Branch = value
+			case "priority":
+				tk.Priority = value
 			case "labels", "depends", "touches", "repos":
 				var list []string
 				for _, p := range strings.Split(value, ",") {

@@ -171,6 +171,72 @@ func TestCompareVersion(t *testing.T) {
 	}
 }
 
+func TestParsePriorities(t *testing.T) {
+	// Defaults: the starting set critical, high, normal, low.
+	c := Defaults()
+	if !containsSlice(c.PriorityValues, []string{"critical", "high", "normal", "low"}) ||
+		c.PriorityDefault != "normal" {
+		t.Errorf("default priorities = %v, default %q", c.PriorityValues, c.PriorityDefault)
+	}
+
+	c, err := Parse([]byte(`
+[priorities]
+values = ["urgent", "normal"]
+default = "urgent"
+`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !containsSlice(c.PriorityValues, []string{"urgent", "normal"}) || c.PriorityDefault != "urgent" {
+		t.Errorf("priorities = %v, default %q", c.PriorityValues, c.PriorityDefault)
+	}
+	if err := c.CheckPriority("urgent"); err != nil {
+		t.Errorf("CheckPriority(urgent) = %v", err)
+	}
+	if err := c.CheckPriority("high"); err == nil {
+		t.Error("CheckPriority(high) must fail outside the configured set")
+	}
+	// Without an explicit default, normal wins when present.
+	c, _ = Parse([]byte("[priorities]\nvalues = [\"low\", \"normal\"]\n"))
+	if c.PriorityDefault != "normal" {
+		t.Errorf("implicit default = %q, want normal", c.PriorityDefault)
+	}
+	c, _ = Parse([]byte("[priorities]\nvalues = [\"p1\", \"p2\"]\n"))
+	if c.PriorityDefault != "p1" {
+		t.Errorf("implicit default = %q, want the first value", c.PriorityDefault)
+	}
+
+	cases := []struct {
+		name string
+		toml string
+		want string
+	}{
+		{"empty values", "[priorities]\nvalues = []\n", "must not be empty"},
+		{"default without values", "[priorities]\ndefault = \"high\"\n", "without priorities.values"},
+		{"default not in values", "[priorities]\nvalues = [\"low\"]\ndefault = \"high\"\n", "not in priorities.values"},
+		{"uppercase", "[priorities]\nvalues = [\"High\"]\n", "lower-case"},
+		{"duplicate", "[priorities]\nvalues = [\"low\", \"low\"]\n", "twice"},
+		{"bad word", "[priorities]\nvalues = [\"very_high\"]\n", "lower-case word"},
+	}
+	for _, tc := range cases {
+		if _, err := Parse([]byte(tc.toml)); err == nil || !contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want it to contain %q", tc.name, err, tc.want)
+		}
+	}
+}
+
+func containsSlice(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func contains(s, sub string) bool {
 	return len(sub) == 0 || (len(s) >= len(sub) && indexOf(s, sub) >= 0)
 }

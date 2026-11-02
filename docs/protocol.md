@@ -133,6 +133,10 @@ admins = ["henrik"]       # force-release; an empty list means nobody
 quota_tickets_per_day = 50   # new tickets per owner and day; 0 disables
 secret_scan = true        # refuse likely credentials before they land
 
+[priorities]
+values = ["critical", "high", "normal", "low"]   # allowed values of the
+default = "normal"        # free field `priority`; fills `add` without --priority
+
 [transitions.agent]       # agent stage moves; human/admin are fixed
 open = ["in-progress", "blocked", "needs-input"]
 in-progress = ["review", "blocked", "needs-input", "open"]
@@ -144,7 +148,10 @@ review = ["in-progress"]
 Parsing is strict: unknown keys, unknown stages, non-positive durations
 and a wrong `schema_version` are errors with the line named. Missing
 roles or stages in `[transitions.agent]` keep the defaults shown above;
-an explicit empty list means "no moves from this stage". The lease is
+an explicit empty list means "no moves from this stage". Priorities
+replace the starting set as a whole; the default must be one of the
+values, and the starting set (critical, high, normal, low, default
+normal) applies without a `[priorities]` table (ADR-0005). The lease is
 the size value raised to `lease_min` and capped at `lease_max`; a claim
 made before a tightening keeps its old lease until the next claim or
 extend, and `validate` then reports `lease-too-long`.

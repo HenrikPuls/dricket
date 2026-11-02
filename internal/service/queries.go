@@ -14,14 +14,15 @@ import (
 
 // ListItem is one row of `dk ls`.
 type ListItem struct {
-	ID     string `json:"id"`
-	Stage  string `json:"stage"`
-	Owner  string `json:"owner"`
-	Title  string `json:"title"`
-	Kind   string `json:"kind,omitempty"`
-	Epoch  int    `json:"epoch"`
-	Rev    int    `json:"rev"`
-	Labels string `json:"labels,omitempty"`
+	ID       string `json:"id"`
+	Stage    string `json:"stage"`
+	Owner    string `json:"owner"`
+	Title    string `json:"title"`
+	Priority string `json:"priority,omitempty"`
+	Kind     string `json:"kind,omitempty"`
+	Epoch    int    `json:"epoch"`
+	Rev      int    `json:"rev"`
+	Labels   string `json:"labels,omitempty"`
 }
 
 // ListFilter narrows `dk ls`; empty fields mean "no restriction".
@@ -86,14 +87,15 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]ListItem, []string,
 			continue
 		}
 		items = append(items, ListItem{
-			ID:     tk.ID,
-			Stage:  string(tk.Stage),
-			Owner:  tk.Owner,
-			Title:  tk.Title,
-			Kind:   string(tk.Kind),
-			Epoch:  tk.Epoch,
-			Rev:    tk.Rev,
-			Labels: strings.Join(tk.Labels, ","),
+			ID:       tk.ID,
+			Stage:    string(tk.Stage),
+			Owner:    tk.Owner,
+			Title:    tk.Title,
+			Priority: tk.Priority,
+			Kind:     string(tk.Kind),
+			Epoch:    tk.Epoch,
+			Rev:      tk.Rev,
+			Labels:   strings.Join(tk.Labels, ","),
 		})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
@@ -133,9 +135,15 @@ type LintResult struct {
 }
 
 // Lint checks one ticket or, when id is empty, every ticket on the head.
+// The priority check needs dricket.toml; a missing config keeps the
+// defaults (the starting set), a broken one is reported as a finding.
 func (s *Service) Lint(ctx context.Context, id string) ([]LintResult, error) {
 	if err := s.Store.Refresh(ctx); err != nil {
 		return nil, wrapRead(err)
+	}
+	cfg, err := s.config(ctx)
+	if err != nil {
+		return nil, err
 	}
 	var paths []string
 	if id != "" {
@@ -181,6 +189,11 @@ func (s *Service) Lint(ctx context.Context, id string) ([]LintResult, error) {
 		}
 		for _, f := range ticket.Lint(tk) {
 			res.Findings = append(res.Findings, f.String())
+		}
+		if tk.Priority == "" {
+			res.Findings = append(res.Findings, "warning priority: not set (default "+cfg.PriorityDefault+")")
+		} else if perr := cfg.CheckPriority(tk.Priority); perr != nil {
+			res.Findings = append(res.Findings, "error priority: "+perr.Error())
 		}
 		if len(res.Findings) > 0 {
 			results = append(results, res)

@@ -39,6 +39,10 @@ admins = []                  # owner ids allowed to force-release; empty = nobod
 quota_tickets_per_day = 50   # new tickets per identity and day; 0 disables
 secret_scan = true           # refuse likely credentials before they land
 
+[priorities]
+values = ["critical", "high", "normal", "low"]
+default = "normal"
+
 [transitions.agent]          # agent stage moves; human/admin may move anything
 open = ["in-progress", "blocked", "needs-input"]
 in-progress = ["review", "blocked", "needs-input", "open"]
