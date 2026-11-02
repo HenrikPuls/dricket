@@ -13,3 +13,6 @@ coverage.*
 
 # Local dricket state
 .dricket-local/
+
+# Spike build artifact
+/spike/spike.exe
