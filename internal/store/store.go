@@ -363,6 +363,36 @@ func (s *Store) PushDryRun(ctx context.Context) error {
 	return nil
 }
 
+// AuthorEmail is the git author identity this store pushes as; the quota
+// counts add commits by it (abuse protection, not a security boundary).
+func (s *Store) AuthorEmail() string { return s.opts.Profile.GitEmail }
+
+// RecentAdds counts distinct ticket files added by the given author
+// within the window ending now. It refreshes the working copy first (the
+// caller's write loop refreshes again; one extra fetch per add is the
+// price of abuse protection). ok is 0 when the branch has no history.
+func (s *Store) RecentAdds(ctx context.Context, window time.Duration, author string) (int, error) {
+	if err := s.Refresh(ctx); err != nil {
+		return 0, err
+	}
+	if !s.hasRef {
+		return 0, nil
+	}
+	since := time.Now().Add(-window).UTC().Format(time.RFC3339)
+	out, stderr, err := s.git(ctx, "log", "--since="+since, "--author="+author,
+		"--diff-filter=A", "--name-only", "--format=", "--", "tickets/")
+	if err != nil {
+		return 0, fmt.Errorf("git log for quota: %s", firstLine(stderr))
+	}
+	seen := map[string]bool{}
+	for _, l := range lines(out) {
+		if strings.HasSuffix(l, "/ticket.md") {
+			seen[l] = true
+		}
+	}
+	return len(seen), nil
+}
+
 // ------------------------------------------------------------ config ----
 
 // configRef is the local ref where the protected main branch lands. A

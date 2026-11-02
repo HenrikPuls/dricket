@@ -170,6 +170,37 @@ func Parse(data []byte) (*Config, error) {
 	return cfg, nil
 }
 
+// ParsePrefixes reads prefixes.toml, the prefix register on main: a list
+// of prefixes that belong to this store. Admins add entries; prefixes are
+// never renamed. Only the [prefixes] table with a string array is
+// understood; anything else is an error.
+func ParsePrefixes(data []byte) ([]string, error) {
+	var r struct {
+		Prefixes []string `toml:"prefixes"`
+	}
+	md, err := toml.Decode(string(data), &r)
+	if err != nil {
+		var perr toml.ParseError
+		if errors.As(err, &perr) {
+			return nil, fmt.Errorf("line %d: %s", perr.Position.Line, perr.Error())
+		}
+		return nil, err
+	}
+	if u := md.Undecoded(); len(u) > 0 {
+		keys := make([]string, 0, len(u))
+		for _, k := range u {
+			keys = append(keys, k.String())
+		}
+		return nil, fmt.Errorf("unknown key(s) %s; only [prefixes] with a string array", strings.Join(keys, ", "))
+	}
+	for _, p := range r.Prefixes {
+		if p == "" || p != strings.ToLower(p) {
+			return nil, fmt.Errorf("prefix %q must be non-empty and lower case", p)
+		}
+	}
+	return r.Prefixes, nil
+}
+
 // mergeTransitions folds a partial [transitions] table over the defaults:
 // a missing role or stage keeps the default targets; an explicit empty
 // list means "no moves allowed from this stage".

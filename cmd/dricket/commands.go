@@ -32,6 +32,8 @@ var serviceCmds = []command{
 	{name: "leases", synopsis: "show leases and their status", run: runLeases},
 	{name: "inbox", synopsis: "what is new for a ticket", run: runInbox},
 	{name: "show", synopsis: "display a ticket", run: runShow},
+	{name: "guide", synopsis: "print the agent guide", run: runGuide},
+	{name: "force-release", synopsis: "admin release with a reason", run: runForceRelease},
 	{name: "lint", synopsis: "check tickets", run: runLint},
 	{name: "doctor", synopsis: "check the local setup", run: runDoctor},
 }
