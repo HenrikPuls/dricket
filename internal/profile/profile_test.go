@@ -70,19 +70,15 @@ func TestEnvSSHKeyAndIsolation(t *testing.T) {
 }
 
 func TestResolveFromUserConfig(t *testing.T) {
-	// os.UserConfigDir reads APPDATA (Windows) / XDG_CONFIG_HOME (Unix).
-	dir := t.TempDir()
-	t.Setenv("APPDATA", dir)
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	// DK_CONFIG pins the config file (os.UserConfigDir differs per
+	// platform and is not env-overridable on macOS).
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	t.Setenv("DK_CONFIG", cfgPath)
 
 	if _, err := Resolve("orch-1"); err == nil {
 		t.Fatal("missing config file must be an error for an explicit name")
 	}
 
-	cfgDir := filepath.Join(dir, "dricket")
-	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
 	cfg := `
 [profile.orch-1]
 owner = "orch-1.sub-2"
@@ -95,7 +91,7 @@ owner = "henrik"
 git_name = "Henrik"
 git_email = "henrik@invalid"
 `
-	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(cfg), 0o600); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 

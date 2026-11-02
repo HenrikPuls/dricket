@@ -85,8 +85,12 @@ func Default() (Profile, error) {
 }
 
 // userConfigPath is <user config dir>/dricket/config.toml, outside any
-// repository.
+// repository. DK_CONFIG overrides the path wholesale (tests, setups with
+// several identities on one machine).
 func userConfigPath() (string, error) {
+	if p := os.Getenv("DK_CONFIG"); p != "" {
+		return p, nil
+	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("user config dir: %w", err)

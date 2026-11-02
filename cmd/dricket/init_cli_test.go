@@ -75,21 +75,16 @@ func TestCLISetupAgent(t *testing.T) {
 }
 
 func TestCLIProfileFromUserConfig(t *testing.T) {
-	// os.UserConfigDir reads APPDATA (Windows) / XDG_CONFIG_HOME (Unix).
-	cfgRoot := t.TempDir()
-	t.Setenv("APPDATA", cfgRoot)
-	t.Setenv("XDG_CONFIG_HOME", cfgRoot)
-	cfgDir := filepath.Join(cfgRoot, "dricket")
-	if err := os.MkdirAll(cfgDir, 0o750); err != nil {
-		t.Fatalf("mkdir: %v", err)
-	}
+	// DK_CONFIG pins the user config file (platform-independent).
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	t.Setenv("DK_CONFIG", cfgPath)
 	cfg := `
 [profile.demo]
 owner = "demo-runner.sub-1"
 git_name = "Demo Runner"
 git_email = "demo@invalid"
 `
-	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(cfg), 0o600); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 

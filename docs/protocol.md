@@ -346,3 +346,5 @@ All three guards are configured in dricket.toml (see Configuration).
 - `DK_DATA_DIR`: where private working copies live (default: the user
   cache directory).
 - `DK_PROFILE`: profile selection (with stage v2 profiles).
+- `DK_CONFIG`: path of the user config file with the profiles (default:
+  `<user config dir>/dricket/config.toml`).
