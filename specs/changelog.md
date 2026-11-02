@@ -30,6 +30,9 @@ top-level CHANGELOG.md and are written at release time from this file.
   dricket.toml `[priorities]`; `add --priority`, `set priority=...`,
   columns in ls/next, lint and validate checks; scaffold carries the
   table; ADR-0005 — handed over 2026-11-02
+- next orders by priority (owner decision, ADR-0006): the
+  `[priorities].values` order ranks tickets, lowest number wins within
+  one rank — handed over 2026-11-02
 
 ## Shipped
 

@@ -338,8 +338,9 @@ All three guards are configured in dricket.toml (see Configuration).
 
 - `next` picks the next suitable ticket: free and open, or its lease
   expired past the grace period (a takeover candidate), with every
-  dependency and the parent in `done` or `cancelled`. Lowest number
-  first, and exit 10 when nothing qualifies. `--claim` takes it
+  dependency and the parent in `done` or `cancelled`. Highest priority
+  first (the `[priorities].values` order), then lowest number, and exit
+  10 when nothing qualifies (ADR-0006). `--claim` takes it
   directly, `--size` sets the lease size, `-p` restricts the prefix.
 - `search <query>` is a fixed-string, case-insensitive full-text search
   over the ticket files of the fetched head (`git grep`; `ls` filters by

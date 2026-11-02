@@ -42,11 +42,10 @@ func TestCLIPriority(t *testing.T) {
 		t.Fatalf("show after set = %d, %q", code, out)
 	}
 
-	// next reports the priority of the chosen ticket (ordering stays
-	// lowest number first; priority-based ordering is a separate
-	// decision).
+	// next picks the critical ticket first now (priority order from
+	// [priorities].values, then the lowest number).
 	code, out, _ = runForTest(t, "next")
-	if code != 0 || !strings.Contains(out, "low") {
-		t.Fatalf("next = %d, %q; want the priority column", code, out)
+	if code != 0 || !strings.Contains(out, "critical") || !strings.Contains(out, "app-2") {
+		t.Fatalf("next = %d, %q; want the critical app-2 first", code, out)
 	}
 }

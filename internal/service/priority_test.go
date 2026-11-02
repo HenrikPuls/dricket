@@ -105,3 +105,36 @@ func TestPriorityVisibleInQueries(t *testing.T) {
 		t.Errorf("next stage = %q, want open (no --claim)", res.Stage)
 	}
 }
+
+func TestNextOrdersByPriorityThenNumber(t *testing.T) {
+	bare := setupBare(t)
+	ctx := context.Background()
+	alice := open(t, bare, "alice")
+
+	// The lowest number carries the lowest priority: the critical
+	// ticket with the higher number must win.
+	if _, err := alice.Add(ctx, AddRequest{Prefix: "app", Title: "routine", Priority: "low", Unclaimed: true}); err != nil {
+		t.Fatalf("add 1: %v", err)
+	}
+	if _, err := alice.Add(ctx, AddRequest{Prefix: "app", Title: "urgent", Priority: "critical", Unclaimed: true}); err != nil {
+		t.Fatalf("add 2: %v", err)
+	}
+	if _, err := alice.Add(ctx, AddRequest{Prefix: "app", Title: "normal", Priority: "normal", Unclaimed: true}); err != nil {
+		t.Fatalf("add 3: %v", err)
+	}
+
+	res, err := alice.Next(ctx, NextOptions{})
+	if err != nil || res.ID != "app-2" || res.Priority != "critical" {
+		t.Fatalf("next = %+v, %v; want app-2 (critical first)", res, err)
+	}
+
+	// Within one priority rank the lowest number wins: demoting app-2
+	// to normal puts it in a rank with app-3, and the lower number wins.
+	if _, err := alice.Set(ctx, "app-2", "priority", "normal", 0); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	res, err = alice.Next(ctx, NextOptions{})
+	if err != nil || res.ID != "app-2" || res.Priority != "normal" {
+		t.Fatalf("next after demote = %+v, %v; want app-2 (lowest number in the normal rank)", res, err)
+	}
+}

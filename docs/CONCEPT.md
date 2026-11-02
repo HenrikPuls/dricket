@@ -260,7 +260,7 @@ The role comes from `kind` (`agent` or `human`). ⚠️ `kind` is stored in the 
 
 **Contributions by others during a claim.** Third parties never write into `ticket.md` while someone holds the claim. A shared body section would make the file multi-writer: every foreign push would change `rev` and the blob SHA, and the owner would fail with exit 12 on `--if-version`. Comments therefore stay separate, add-only files with exactly one writer each.
 
-**Dependencies.** `depends` lists IDs, `parent` points to a parent ticket. `next` returns only tickets whose dependencies are in `done` or `cancelled`. `validate` finds cycles. Cross-project dependencies are allowed as long as the other prefix lives in the same store. That is one reason for a shared ticket store.
+**Dependencies.** `depends` lists IDs, `parent` points to a parent ticket. `next` returns only tickets whose dependencies are in `done` or `cancelled`, highest priority first (stage v2, ADR-0006). `validate` finds cycles. Cross-project dependencies are allowed as long as the other prefix lives in the same store. That is one reason for a shared ticket store.
 
 **Block instead of wait.** If an agent waits for an answer, it sets `needs-input` and releases rather than holding the lease. A human answers by comment and resets the stage. No lease hangs on a waiting period.
 
