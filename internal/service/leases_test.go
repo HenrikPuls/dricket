@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HenrikPuls/dricket/internal/config"
 	"github.com/HenrikPuls/dricket/internal/ticket"
 )
 
@@ -21,6 +22,7 @@ func TestExtendHappyLimitAndOwnership(t *testing.T) {
 	alice.Now = at(base)
 	bob := open(t, bare, "bob")
 
+	maxExt := config.Defaults().MaxExtensions
 	id, err := alice.Add(ctx, AddRequest{Prefix: "app", Title: "long task", Size: ticket.SizeM})
 	if err != nil {
 		t.Fatalf("add: %v", err)
@@ -30,16 +32,16 @@ func TestExtendHappyLimitAndOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("extend 1: %v", err)
 	}
-	if res.Extensions != 1 || res.Epoch != 1 || res.MaxExtend != MaxExtensions {
+	if res.Extensions != 1 || res.Epoch != 1 || res.MaxExtend != maxExt {
 		t.Fatalf("extend result = %+v", res)
 	}
-	want := base.Add(LeaseM).UTC().Format(time.RFC3339)
+	want := base.Add(8 * time.Hour).UTC().Format(time.RFC3339)
 	if res.LeaseUntil != want {
 		t.Errorf("lease_until = %s, want %s", res.LeaseUntil, want)
 	}
 
 	// The limit is enforced on the fourth extend.
-	for i := 2; i <= MaxExtensions; i++ {
+	for i := 2; i <= maxExt; i++ {
 		if _, err := alice.Extend(ctx, id, "still working"); err != nil {
 			t.Fatalf("extend %d: %v", i, err)
 		}
@@ -61,7 +63,7 @@ func TestExtendHappyLimitAndOwnership(t *testing.T) {
 	}
 
 	tk := mustTicket(t, bareShow(t, bare, "tickets/app/0000/app-1/ticket.md"))
-	if tk.Extensions != MaxExtensions || !strings.Contains(tk.Body, "extend app-1: tests take longer") {
+	if tk.Extensions != maxExt || !strings.Contains(tk.Body, "extend app-1: tests take longer") {
 		t.Errorf("ticket after extends = %+v body:\n%s", tk, tk.Body)
 	}
 }

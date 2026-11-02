@@ -18,11 +18,9 @@ import (
 	"github.com/HenrikPuls/dricket/internal/ticket"
 )
 
-// Starting values from docs/CONCEPT.md, marked there as estimates; the
-// config on main (stage v2) makes them configurable.
+// Thresholds for the lease status display; estimates from
+// docs/CONCEPT.md, Monitoring (not part of dricket.toml).
 const (
-	// MaxExtensions limits how often a claim may be extended.
-	MaxExtensions = 3
 	// ExpiringFraction: less than this share of the lease left means
 	// status "expiring".
 	ExpiringFraction = 0.2
@@ -50,7 +48,8 @@ type ExtendResult struct {
 }
 
 // Extend lengthens the lease of a ticket its owner still holds. The reason
-// is required and lands in the log; the counter is limited by MaxExtensions.
+// is required and lands in the log; the counter is limited by the
+// max_extensions value of dricket.toml (default 3).
 func (s *Service) Extend(ctx context.Context, id, reason string) (ExtendResult, error) {
 	id = strings.ToLower(strings.TrimSpace(id))
 	path, err := PathFor(id)
@@ -60,6 +59,10 @@ func (s *Service) Extend(ctx context.Context, id, reason string) (ExtendResult, 
 	reason = sanitize(strings.TrimSpace(reason), MaxBody)
 	if reason == "" {
 		return ExtendResult{}, errf(KindInvalid, "extend requires a reason")
+	}
+	cfg, cerr := s.config(ctx)
+	if cerr != nil {
+		return ExtendResult{}, cerr
 	}
 
 	var out ExtendResult
@@ -75,10 +78,10 @@ func (s *Service) Extend(ctx context.Context, id, reason string) (ExtendResult, 
 				return errf(KindInvalid, "ticket %s is not claimed", id)
 			case tk.Owner != s.Owner:
 				return errf(KindClaimed, "ticket %s is claimed by %s, not by you", id, tk.Owner)
-			case tk.Extensions >= MaxExtensions:
-				return errf(KindInvalid, "extend limit reached (%d times); release the ticket instead", MaxExtensions)
+			case tk.Extensions >= cfg.MaxExtensions:
+				return errf(KindInvalid, "extend limit reached (%d times); release the ticket instead", cfg.MaxExtensions)
 			}
-			out = ExtendResult{ID: id, Epoch: tk.Epoch, Extensions: tk.Extensions + 1, MaxExtend: MaxExtensions}
+			out = ExtendResult{ID: id, Epoch: tk.Epoch, Extensions: tk.Extensions + 1, MaxExtend: cfg.MaxExtensions}
 			return nil
 		},
 		Mutate: func(w store.Worktree) error {
@@ -87,7 +90,7 @@ func (s *Service) Extend(ctx context.Context, id, reason string) (ExtendResult, 
 				return err
 			}
 			now := s.Now()
-			lease, err := leaseFor(tk.Size)
+			lease, err := cfg.Lease(tk.Size)
 			if err != nil {
 				return err
 			}
@@ -215,6 +218,10 @@ func (s *Service) Leases(ctx context.Context, f LeasesFilter) ([]LeaseInfo, erro
 	if err != nil {
 		return nil, wrapRead(err)
 	}
+	cfg, cerr := s.config(ctx)
+	if cerr != nil {
+		return nil, cerr
+	}
 	now := s.Now()
 	var out []LeaseInfo
 	for _, p := range paths {
@@ -233,9 +240,9 @@ func (s *Service) Leases(ctx context.Context, f LeasesFilter) ([]LeaseInfo, erro
 		if err != nil || tk.Owner == "" {
 			continue
 		}
-		dur, derr := leaseFor(tk.Size)
+		dur, derr := cfg.Lease(tk.Size)
 		if derr != nil {
-			dur = LeaseM
+			dur = cfg.LeaseM
 		}
 		status := LeaseOK
 		switch {

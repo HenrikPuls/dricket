@@ -6,23 +6,24 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/HenrikPuls/dricket/internal/config"
 	"github.com/HenrikPuls/dricket/internal/frontmatter"
 	"github.com/HenrikPuls/dricket/internal/store"
 	"github.com/HenrikPuls/dricket/internal/ticket"
 )
 
-// Starting values from docs/CONCEPT.md, marked there as estimates; they
-// become configuration when stage v2 introduces dricket.toml.
+// Limits that are deliberately NOT part of dricket.toml: the grace is
+// the safety margin of the fencing model and changes with an ADR, not
+// with a config file. Size limits are about untrusted input size.
 const (
-	LeaseS     = 2 * time.Hour
-	LeaseM     = 8 * time.Hour
-	LeaseL     = 24 * time.Hour
 	Grace      = 20 * time.Minute
 	MaxTitle   = 200
 	MaxComment = 100000
@@ -98,11 +99,65 @@ type Service struct {
 	Store *store.Store
 	Owner string // unique owner id of this process
 	Now   func() time.Time
+	// ToolVersion is this binary's version ("dev" or empty skips the
+	// min_version check of dricket.toml).
+	ToolVersion string
+
+	cfg     *config.Config
+	cfgErr  error
+	cfgOnce sync.Once
 }
 
 // New builds a service. Owner must be unique per claim-capable process.
 func New(st *store.Store, owner string) *Service {
 	return &Service{Store: st, Owner: owner, Now: time.Now}
+}
+
+// config returns the effective dricket.toml, loaded once per service.
+// A missing config means the defaults; a broken config is a hard error
+// (kind error, exit 1) — the file is protected, so its breakage blocks
+// every operation that needs limits until an admin fixes it.
+func (s *Service) config(ctx context.Context) (*config.Config, error) {
+	s.cfgOnce.Do(func() {
+		data, err := s.Store.ConfigFile(ctx, "dricket.toml")
+		if err != nil {
+			s.cfgErr = errf(KindError, "%v", err)
+			return
+		}
+		cfg := config.Defaults()
+		if len(data) > 0 {
+			cfg, err = config.Parse(data)
+			if err != nil {
+				s.cfgErr = errf(KindError, "dricket.toml: %v", err)
+				return
+			}
+		}
+		if cfg.MinVersion != "" && s.ToolVersion != "" && s.ToolVersion != "dev" {
+			cmp, err := config.CompareVersion(s.ToolVersion, cfg.MinVersion)
+			if err != nil {
+				s.cfgErr = errf(KindError, "%v", err)
+				return
+			}
+			if cmp < 0 {
+				s.cfgErr = errf(KindTooOld,
+					"this tool is version %s, but dricket.toml requires at least %s (exit 16)",
+					s.ToolVersion, cfg.MinVersion)
+				return
+			}
+		}
+		s.cfg = cfg
+	})
+	return s.cfg, s.cfgErr
+}
+
+// leaseFor maps a size to its starting lease under the config, clamped by
+// lease_min and lease_max.
+func (s *Service) leaseFor(ctx context.Context, size ticket.Size) (time.Duration, error) {
+	cfg, err := s.config(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return cfg.Lease(size)
 }
 
 // ---------------------------------------------------------- paths and ids -
@@ -192,19 +247,6 @@ func sanitize(s string, limit int) string {
 		out = out[:limit]
 	}
 	return out
-}
-
-// leaseFor maps a size to its starting lease.
-func leaseFor(size ticket.Size) (time.Duration, error) {
-	switch size {
-	case ticket.SizeS:
-		return LeaseS, nil
-	case ticket.SizeM:
-		return LeaseM, nil
-	case ticket.SizeL:
-		return LeaseL, nil
-	}
-	return 0, errf(KindInvalid, "size %q is not one of S, M, L", string(size))
 }
 
 // checkLint refuses a ticket that does not pass the lint level.
