@@ -10,8 +10,34 @@ top-level CHANGELOG.md and are written at release time from this file.
 - Infrastructure and Phase 0: public repository published (CI green, rulesets active, Pages live), roadmap and architecture refined — handed over 2026-11-02
 - Spike: R-1 — handed over 2026-11-02
 - Foundations: R-2 — handed over 2026-11-02
+- Store: R-10 — handed over 2026-11-02
 
 ## Shipped
+
+### R-10 Store (2026-11-02)
+Behaviour: `internal/store` owns a private working copy per profile outside
+any project directory (user cache dir, named after remote, branch and
+owner), runs git as a subprocess with the profile identity in every call
+(ADR-0002), validates the branch ref with git check-ref-format, and
+implements the write protocol: fetch, preconditions on the fresh head,
+mutate, commit, push; on a rejected push exponential backoff with jitter
+and a fresh fetch, bounded by the concept's starting values (8 attempts,
+200 ms base, 5 s cap, 30 s budget — options, not constants). Push
+classification treats non-fast-forward, fetch-first and the server-side
+"cannot lock ref" race as retryable and everything else as permanent
+(rights, protection, network), so an agent never waits on an error that
+never goes away. Reads (Has/ReadFile/List) work against the fetched head;
+an empty remote branch is supported and the first push creates it. All
+paths through the working copy are normalised and checked (`..`, absolute,
+control characters rejected). `internal/profile` carries owner id and git
+identity; Default() is user@host in lower case.
+Tests: integration against local bare repos — write/read round trip with
+author identity, first push on an empty remote, precondition failure
+leaves the remote untouched, forced non-fast-forward retry, 8-way
+concurrent claim race with exactly one winner (permanent regression test
+for the claim invariant), concurrent distinct paths, unreachable remote
+fails fast, unsafe paths rejected, private working copy outside cwd;
+unit tests for path safety, push classification and profile identity.
 
 ### R-2 Foundations (2026-11-02)
 Behaviour: Go module `github.com/HenrikPuls/dricket` (go 1.27); `cmd/dricket`
