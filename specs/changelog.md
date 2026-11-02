@@ -37,6 +37,11 @@ top-level CHANGELOG.md and are written at release time from this file.
   archives for linux/darwin/windows on amd64/arm64 with SHA-256
   checksums and build provenance attestation, README with a recorded
   session, root CHANGELOG for 0.1.0 — handed over 2026-11-02
+- Version reporting fix for module installs (`go install ...@vX`
+  showed "dev"; now the build info's module version is reported,
+  GoReleaser injects v{{.Version}}, install docs corrected: go
+  install installs dricket, the dk alias ships in the archives) —
+  handed over 2026-11-02
 
 ## Shipped
 
