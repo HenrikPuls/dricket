@@ -193,3 +193,57 @@ func (s *Service) Lint(ctx context.Context, id string) ([]LintResult, error) {
 func wrapRead(err error) error {
 	return &Error{Kind: KindError, Msg: err.Error()}
 }
+
+// SearchHit is one matching line of `dk search`.
+type SearchHit struct {
+	ID   string `json:"id"`
+	Path string `json:"path"`
+	Line string `json:"line"`
+}
+
+// Search runs a fixed-string, case-insensitive full-text search over the
+// ticket files of the fetched head (git grep; a local index comes only
+// once a measurement shows slowness). `ls` filters by field, search reads
+// the text.
+func (s *Service) Search(ctx context.Context, query, prefix string) ([]SearchHit, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, errf(KindInvalid, "search needs a query")
+	}
+	prefix = strings.ToLower(strings.TrimSpace(prefix))
+	if err := s.Store.Refresh(ctx); err != nil {
+		return nil, wrapRead(err)
+	}
+	raw, err := s.Store.Grep(ctx, query, prefix)
+	if err != nil {
+		return nil, wrapRead(err)
+	}
+	var hits []SearchHit
+	for _, l := range raw {
+		// FETCH_HEAD:<path>:<lineno>:<text>
+		parts := strings.SplitN(l, ":", 4)
+		if len(parts) != 4 {
+			continue
+		}
+		hits = append(hits, SearchHit{
+			ID:   ticketIDOfPath(parts[1]),
+			Path: parts[1],
+			Line: strings.TrimRight(parts[3], "\r"),
+		})
+	}
+	return hits, nil
+}
+
+// ticketIDOfPath derives the ticket id from a ticket-tree path.
+func ticketIDOfPath(p string) string {
+	parts := strings.Split(p, "/")
+	for i := len(parts) - 1; i >= 0; i-- {
+		if parts[i] == "comments" && i > 0 {
+			return parts[i-1]
+		}
+	}
+	if len(parts) >= 2 {
+		return parts[len(parts)-2]
+	}
+	return ""
+}

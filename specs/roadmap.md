@@ -7,11 +7,10 @@ the items below; milestone numbers are not used.
 
 ## Now
 
-Nothing. Stage v0 is next; items below in working order.
+Nothing. Stage v1 is shipped; next is stage v2 (R-4 below).
 
 ## Next
-Stage v1 and v2 (stage v0 is shipped, see specs/changelog.md):
-- R-3 Leases and checks (stage v1) — sizes, extend, leases, validate, next, search, inbox, epoch trailers, `dk doctor`.
+Stage v2 (stage v0 and v1 are shipped, see specs/changelog.md):
 - R-4 Protection and roles (stage v2) — declarative schema in dricket.toml, path rules, role transitions, force-release, guide/init/setup-agent, profiles, quotas, secret scan.
 - R-5 First release — checksums, build provenance, README with a recorded session.
 

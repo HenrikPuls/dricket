@@ -179,6 +179,45 @@ ticket file `schema_version` (currently both 1).
 | 16 | tool too old or unknown schema version |
 | 20 | `leases --check` found expired leases (stage v1) |
 
+## Validation
+
+Two levels (docs/CONCEPT.md): `lint` runs before every tool write on one
+file; `validate` is the deep, read-only check for hooks, CI and scheduled
+jobs. Exit 14 with the findings, warnings do not fail.
+
+`dk validate` checks the fetched head and replays the complete history:
+
+- current state: every file under `tickets/` parses, passes lint, has the
+  id its path says; comments carry matching number, ticket and author;
+  `depends` and `parent` exist; the dependency graph has no cycles;
+- history replay: identity fields never changed, `rev` rose by exactly
+  one per write, `epoch` never decreased, every ownership change was a
+  claim, a release or a takeover after `lease_until` plus grace, stage
+  moves match the role's allowed transitions, comments stayed add-only,
+  nothing was deleted, one ticket per commit.
+
+`dk validate --trailers <git-range>` runs in a code repository and checks
+every commit of the range for the dricket trailers (`Dricket-Ticket`,
+`Dricket-Epoch`, `Dricket-Op`, `Dricket-Actor`, written by the runner
+wrapper, not by dricket): the ticket must exist, the commit's epoch must
+not be older than the ticket's current epoch (stale work after a
+takeover), and while the ticket is claimed the actor must be its owner.
+Every commit in the range must carry the trailers; wrapper branches
+satisfy that. This is the merge gate for epoch trailers; without a
+host-side gate it stays advisory.
+
+## Workflow commands
+
+- `next` picks the next suitable ticket: free and open, or its lease
+  expired past the grace period (a takeover candidate), with every
+  dependency and the parent in `done` or `cancelled`. Lowest number
+  first, and exit 10 when nothing qualifies. `--claim` takes it
+  directly, `--size` sets the lease size, `-p` restricts the prefix.
+- `search <query>` is a fixed-string, case-insensitive full-text search
+  over the ticket files of the fetched head (`git grep`; `ls` filters by
+  field, search reads the text). `-p` restricts the prefix. Exit 1 when
+  nothing matches, like grep.
+
 ## Environment
 
 - `DK_STORE`: the store as `remote[#branch]`; `--store` overrides.
