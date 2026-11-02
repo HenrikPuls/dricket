@@ -7,6 +7,7 @@ top-level CHANGELOG.md and are written at release time from this file.
 ## Awaiting verification
 
 - Skeleton: R-0 — handed over 2026-11-02
+- Infrastructure and Phase 0: public repository published (CI green, rulesets active, Pages live), roadmap and architecture refined — handed over 2026-11-02
 
 ## Shipped
 
