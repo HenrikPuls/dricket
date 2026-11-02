@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/HenrikPuls/dricket/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/HenrikPuls/dricket/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: GPL v3 or later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue"></a>
-  <img alt="Status: pre-alpha" src="https://img.shields.io/badge/status-pre--alpha-orange">
+  <img alt="Release: v0.1.0" src="https://img.shields.io/badge/release-v0.1.0-blue">
 </p>
 
 dricket is a ticketing system with no server. Every ticket is a Markdown file in
@@ -17,10 +17,10 @@ A person can read and edit a ticket in any editor. An agent gets a small,
 strict command line that keeps it from stepping on anyone else's work. Both
 use the same files.
 
-> **Status: pre-alpha.** The design is complete and specified in
-> [docs/CONCEPT.md](docs/CONCEPT.md); the implementation is just starting.
-> Nothing below is released yet. Sections marked *(planned)* describe the target
-> behaviour, not shipped code. See [Status](#status).
+> **Status: early release (v0.1.0).** The design is specified in
+> [docs/CONCEPT.md](docs/CONCEPT.md); stages v0 to v2 are implemented and
+> released. Later stages (messages, skills, lease services) are deliberately
+> deferred, each with the trigger that would build them. See [Status](#status).
 
 ## Why dricket
 
@@ -33,21 +33,38 @@ use the same files.
   stale agent from writing, strict validation, and role rules such as "agents
   take a ticket to review, a human closes it".
 
-## See it work *(planned)*
+## See it work
 
-This session shows the target behaviour. It is illustrative and is **not**
-output from a released binary; it will be replaced with a recorded session from
-the real tool.
+A recorded session from the released tool (v0.1.0, Windows; paths shortened).
+Command flags come before positional arguments.
 
 ```console
-$ dk add -c "Login error on empty password" -l bug
-app-6842
-$ dk claim app-6842 --size M
-claimed app-6842 (lease until 18:02, epoch 3)
-$ dk update app-6842 --note "Root cause found"
-$ dk release app-6842 --stage review --result "Fix on dk/app-6842"
-released app-6842 -> review
+$ dk init demo-store
+initialized ticket store in …/demo-store
+  main:        checked out, holds dricket.toml (edit by pull request)
+  tickets:  seeded; point the tool at it:
+  dk --store …/demo-store#tickets add -c "First ticket"
+$ export DK_STORE=demo-store#tickets DK_OWNER=henrik
+$ dk add --prefix app -c "Login error on empty password" -l bug --unclaimed
+app-1
+$ dk next
+app-1          open        normal   Login error on empty password
+$ dk next --claim --size M
+claimed app-1 (epoch 1, lease until 2026-11-03T03:50:06Z)
+$ dk update --note "Root cause found" app-1
+updated app-1 (rev 2, claim kept)
+$ dk extend --reason "Tests take longer" app-1
+extended app-1 (extensions 1/3, lease until 2026-11-03T03:50:15Z)
+$ dk comment app-1 "cannot reproduce on macOS 15"
+tickets/app/0000/app-1/comments/0001.md
+$ dk release --stage review --result "Fix on dk/app-1" app-1
+released app-1 -> review
+$ dk validate
+validate ok
 ```
+
+Everything above is a plain Git repository: `git log` in the store shows one
+commit per change, and every ticket is a Markdown folder.
 
 ## Status
 
@@ -55,22 +72,30 @@ released app-6842 -> review
 |---|---|
 | Design and protocol | specified, see [docs/CONCEPT.md](docs/CONCEPT.md) and [docs/protocol.md](docs/protocol.md) |
 | Concurrency spike (many clones, invariants) | passed, see [docs/SPIKE.md](docs/SPIKE.md) |
-| CLI v0 (add, claim, release, ls, show, comment, set, lint) | working against a local bare repo; not yet released |
-| v1 commands (extend, update/note, leases, validate, next, search, inbox, doctor) | working against a local bare repo; not yet released |
-| Schema, roles, profiles, force-release | planned (v2) |
-| Releases | none yet |
+| Stage v0 (add, claim, release, ls, show, comment, set, lint) | released |
+| Stage v1 (extend, update/note, leases, validate, next, search, inbox, doctor) | released |
+| Stage v2 (dricket.toml, quotas, secret scan, force-release, init, setup-agent, profiles, priorities) | released |
+| Releases | [v0.1.0](https://github.com/HenrikPuls/dricket/releases/tag/v0.1.0) |
 
 Deliberately **not** built, each with the trigger that would change that, is
 listed under "Deliberately deferred" in the concept.
 
-## Install *(planned)*
+## Install
 
-There is no release yet. When there is, you will get a single static binary per
-platform (`dricket`, alias `dk`) with SHA-256 checksums and a build provenance
-attestation. `git` must be installed.
+Download a single static binary (`dricket` or the alias `dk`) from the
+[releases page](https://github.com/HenrikPuls/dricket/releases): archives for
+linux, macOS and Windows on amd64 and arm64, plus `checksums.txt` (SHA-256)
+and a build provenance attestation. `git` (2.32 or newer) must be installed.
 
 ```console
-go install github.com/HenrikPuls/dricket/cmd/dricket@latest   # once released
+go install github.com/HenrikPuls/dricket/cmd/dricket@v0.1.0
+```
+
+Set up a store and point the tool at it:
+
+```console
+dk init tickets-store
+dk --store tickets-store#tickets add --prefix app -c "First ticket"
 ```
 
 ## How it works

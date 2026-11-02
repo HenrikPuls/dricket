@@ -12,8 +12,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# NOTE: action versions are written as tags. Pin them to commit SHAs before the
-# first release (Dependabot keeps SHA pins current). See docs/maintainers/github-setup.md.
+# NOTE: action versions are pinned to commit SHAs (required before the
+# first release); the trailing comment names the tag Dependabot updates.
+# See docs/maintainers/github-setup.md.
 
 jobs:
   detect:
@@ -21,7 +22,7 @@ jobs:
     outputs:
       has_go: ${{ steps.d.outputs.has_go }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - id: d
         run: |
           if [ -f go.mod ]; then echo "has_go=true" >> "$GITHUB_OUTPUT"; else echo "has_go=false" >> "$GITHUB_OUTPUT"; fi
@@ -35,8 +36,8 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
       - run: go build ./...
@@ -53,11 +54,11 @@ jobs:
     if: needs.detect.outputs.has_go == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v9
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: v2.15.0
 
@@ -66,8 +67,8 @@ jobs:
     if: needs.detect.outputs.has_go == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
@@ -77,8 +78,8 @@ jobs:
     if: needs.detect.outputs.has_go == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
       # Every dependency must be GPLv3-compatible.
@@ -89,10 +90,10 @@ jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: '3.12'
       - run: python scripts/check_docs.py

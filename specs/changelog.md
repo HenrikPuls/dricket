@@ -33,6 +33,10 @@ top-level CHANGELOG.md and are written at release time from this file.
 - next orders by priority (owner decision, ADR-0006): the
   `[priorities].values` order ranks tickets, lowest number wins within
   one rank — handed over 2026-11-02
+- Release R-5 (v0.1.0): actions pinned to commit SHAs, GoReleaser
+  archives for linux/darwin/windows on amd64/arm64 with SHA-256
+  checksums and build provenance attestation, README with a recorded
+  session, root CHANGELOG for 0.1.0 — handed over 2026-11-02
 
 ## Shipped
 
