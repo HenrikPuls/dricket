@@ -12,10 +12,42 @@ top-level CHANGELOG.md and are written at release time from this file.
 - Foundations: R-2 — handed over 2026-11-02
 - Store: R-10 — handed over 2026-11-02
 - Core commands: R-11 — handed over 2026-11-02
-- Leases and monitoring, part of R-3 (extend, update/note, leases with
-  --check, inbox, doctor, ls --stale) — handed over 2026-11-02
+- Leases and checks: R-3 — handed over 2026-11-02
 
 ## Shipped
+
+### R-3 Leases and checks (2026-11-02)
+Behaviour: stage v1 complete, no on-disk format change, no new exit code
+(20 was reserved). `extend --reason` (owner-only, limit 3 as a starting
+value, lease_until = now + lease(size), reason in the log); `note` and
+`update --note` append log entries and keep the claim; `leases` with
+statuses ok / expiring (under 20 percent left) / expired (past lease plus
+grace), the separate quiet hint from the ticket's last commit time, and
+`--expiring`, `--stale`, `--check` (exit 20 for cron and CI); `ls
+--stale` for dead claims; `inbox <id>` with a local, disposable marker
+per store and owner in `<workdir>.state`; `doctor` (git at least 2.32,
+identity, store, reachability, dry-run push with its honest limits,
+writable data dir); `next` (free and open or lease expired, dependencies
+done or cancelled, lowest number first, `--claim`, exit 10 when nothing
+qualifies); `search` (git grep, fixed string, case-insensitive, exit 1
+on no match); `validate` — current state (parse, lint, references,
+cycles, comment shape) plus a full history replay (identity immutable,
+rev +1 per write, epoch never decreasing, legal ownership transitions
+including takeover only after lease plus grace, stage moves per role,
+comments add-only, nothing deleted, one ticket per commit) with exit 14;
+`validate --trailers <range>` is the epoch-trailer gate for code
+repositories (missing trailer, unknown ticket, stale epoch, actor
+mismatch) — advisory without a host-side merge gate.
+Tests: leases statuses with a controllable clock (expiring, expired,
+quiet, filters, exit 20), extend limit and ownership, inbox marker
+lifecycle across owners, next eligibility (blocked dependencies, done
+dependencies, takeover candidates, prefix filter, exit 10), search hits
+in titles and comments; validate against a busy legal history (including
+a takeover) stays silent and detects identity rewrites, rev jumps,
+illegal agent transitions, tampered and deleted comments (deleted with
+plain git, exactly like writing around the tool), dangling dependencies
+and cycles; trailer gate with clean, stale, unknown, unattributed and
+trailerless commits; CLI end-to-end for all new commands.
 
 ### R-11 Core commands (2026-11-02)
 Behaviour: `internal/service` implements the stage v0 use cases on top of

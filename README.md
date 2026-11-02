@@ -56,7 +56,7 @@ released app-6842 -> review
 | Design and protocol | specified, see [docs/CONCEPT.md](docs/CONCEPT.md) and [docs/protocol.md](docs/protocol.md) |
 | Concurrency spike (many clones, invariants) | passed, see [docs/SPIKE.md](docs/SPIKE.md) |
 | CLI v0 (add, claim, release, ls, show, comment, set, lint) | working against a local bare repo; not yet released |
-| Leases command, validation, `next`, `inbox` | planned (v1) |
+| v1 commands (extend, update/note, leases, validate, next, search, inbox, doctor) | working against a local bare repo; not yet released |
 | Schema, roles, profiles, force-release | planned (v2) |
 | Releases | none yet |
 

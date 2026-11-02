@@ -301,6 +301,17 @@ func firstLine(s string) string {
 	return s
 }
 
+// lines splits command output into non-empty trimmed lines.
+func lines(s string) []string {
+	var out []string
+	for _, l := range strings.Split(s, "\n") {
+		if l = strings.TrimSpace(strings.TrimRight(l, "\r")); l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
 // ------------------------------------------------------- local state ----
 
 // DataDir returns the directory that holds the private working copies.
@@ -350,4 +361,72 @@ func (s *Store) PushDryRun(ctx context.Context) error {
 		return errors.New(firstLine(stderr))
 	}
 	return nil
+}
+
+// ------------------------------------------------------------ history ----
+
+// FileChange is one entry of a commit's change list; Status is the git
+// name-status letter (A, M, D).
+type FileChange struct {
+	Status byte
+	Path   string
+}
+
+// Commits lists the commits that touched the ticket tree, oldest first.
+// Call Refresh first.
+func (s *Store) Commits(ctx context.Context) ([]string, error) {
+	if !s.hasRef {
+		return nil, nil
+	}
+	out, _, err := s.git(ctx, "log", "--reverse", "--format=%H", "--", "tickets/")
+	if err != nil {
+		return nil, fmt.Errorf("git log: %w", err)
+	}
+	return lines(out), nil
+}
+
+// CommitChanges reports what one commit changed.
+func (s *Store) CommitChanges(ctx context.Context, commit string) ([]FileChange, error) {
+	out, _, err := s.git(ctx, "diff-tree", "--no-commit-id", "--name-status", "-r", commit)
+	if err != nil {
+		return nil, fmt.Errorf("diff-tree %s: %w", commit[:min(10, len(commit))], err)
+	}
+	var changes []FileChange
+	for _, l := range lines(out) {
+		f := strings.SplitN(l, "\t", 2)
+		if len(f) == 2 && f[0] != "" {
+			changes = append(changes, FileChange{Status: f[0][0], Path: f[1]})
+		}
+	}
+	return changes, nil
+}
+
+// ShowRev returns a file's content at an arbitrary revision
+// (commit, commit^, FETCH_HEAD, ...).
+func (s *Store) ShowRev(ctx context.Context, rev, path string) (string, error) {
+	out, _, err := s.git(ctx, "show", rev+":"+path)
+	if err != nil {
+		return "", err
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- grep ----
+
+// Grep runs a fixed-string, case-insensitive search over the ticket files
+// of the fetched head and returns git grep's raw "path:line:text" lines.
+// The pattern is passed as one argument; no shell is involved.
+func (s *Store) Grep(ctx context.Context, pattern, prefix string) ([]string, error) {
+	if !s.hasRef {
+		return nil, nil
+	}
+	args := []string{"grep", "-I", "-n", "-F", "-i", "--", pattern, "FETCH_HEAD", "--", "tickets/" + prefix}
+	out, stderr, err := s.git(ctx, args...)
+	if err != nil {
+		if out == "" && strings.TrimSpace(stderr) == "" {
+			return nil, nil // git grep exits 1 when nothing matched
+		}
+		return nil, fmt.Errorf("git grep: %s", firstLine(stderr))
+	}
+	return lines(out), nil
 }
