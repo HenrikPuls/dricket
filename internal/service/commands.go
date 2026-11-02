@@ -43,6 +43,14 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (string, error) {
 	if req.Title == "" {
 		return "", errf(KindInvalid, "a title is required")
 	}
+	// Content checks run before any git access: the secret scan first,
+	// so a leaked credential is reported even when the quota is spent.
+	if err := s.scanSecrets(ctx, req.Title, req.Description); err != nil {
+		return "", err
+	}
+	if err := s.checkQuota(ctx); err != nil {
+		return "", err
+	}
 	if req.Size == "" {
 		req.Size = ticket.SizeM
 	}
@@ -261,6 +269,9 @@ func (s *Service) Release(ctx context.Context, id string, stage ticket.Stage, re
 		stage = ticket.StageReview
 	}
 	result = sanitize(strings.TrimSpace(result), MaxBody)
+	if err := s.scanSecrets(ctx, result); err != nil {
+		return ReleaseResult{}, err
+	}
 	cfg, cerr := s.config(ctx)
 	if cerr != nil {
 		return ReleaseResult{}, cerr
@@ -371,6 +382,9 @@ func (s *Service) Comment(ctx context.Context, id, text string) (string, error) 
 	if strings.TrimSpace(text) == "" {
 		return "", errf(KindInvalid, "comment text is empty")
 	}
+	if err := s.scanSecrets(ctx, text); err != nil {
+		return "", err
+	}
 
 	var file string
 	var content string
@@ -439,6 +453,9 @@ func (s *Service) Set(ctx context.Context, id, key, value string, ifVersion int)
 		return SetResult{}, errf(KindInvalid, "unknown field %q", key)
 	}
 	value = sanitize(strings.TrimSpace(value), MaxBody)
+	if err := s.scanSecrets(ctx, value); err != nil {
+		return SetResult{}, err
+	}
 
 	var out SetResult
 	spec := store.WriteSpec{

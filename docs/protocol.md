@@ -226,6 +226,9 @@ ticket file `schema_version` (currently both 1).
 | 14 | invalid transition or validation error |
 | 15 | network or push failure after all attempts |
 | 16 | tool too old or unknown schema version |
+| 17 | permission denied (force-release by a non-admin) |
+| 18 | quota exceeded |
+| 19 | refused write: the secret scan found likely credentials |
 | 20 | `leases --check` found expired leases (stage v1) |
 
 ## Validation
@@ -257,6 +260,35 @@ takeover), and while the ticket is claimed the actor must be its owner.
 Every commit in the range must carry the trailers; wrapper branches
 satisfy that. This is the merge gate for epoch trailers; without a
 host-side gate it stays advisory.
+
+## Protection (stage v2)
+
+All three guards are configured in dricket.toml (see Configuration).
+
+- **Quota.** `add` counts the ticket files this identity added in the
+  last 24 hours (commit author identity) and refuses further adds with
+  exit 18 over `security.quota_tickets_per_day`. This is abuse
+  protection — a buggy agent must not create thousands of tickets — not
+  a security boundary: an actor that can forge commits can forge the
+  author.
+- **Secret scan.** Before every write the tool scans the untrusted text
+  (title, description, comment, note, free fields, release result) for
+  likely credentials: private key blocks, AWS access key ids, GitHub,
+  GitLab, Slack, OpenAI-style and Stripe live tokens. A hit refuses the
+  write with exit 19 and names the pattern and the line; the matched
+  content is never echoed. The scan is deliberately incomplete and never
+  a guarantee — rotate credentials that land in a ticket regardless.
+  `validate` scans every ticket and comment file, so anything pushed
+  around the tool is still detected.
+- **force-release.** `dk force-release <id> --reason "..."` frees a
+  ticket without the owner's consent — the runbook answer to dead
+  claims. Only owners in `security.admins` may call it; an empty list
+  means nobody (fail closed). The reason is mandatory and lands in the
+  log. The epoch stays (it is a fencing token), `extensions` resets, and
+  the ticket goes to the target stage — default `open`, so `next` picks
+  it up again. Force-releasing an already free ticket is idempotent.
+- **guide.** `dk guide` prints the agent guide matching the tool
+  version; the repo's AGENTS.md only points to it, so they cannot drift.
 
 ## Workflow commands
 

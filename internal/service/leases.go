@@ -132,6 +132,9 @@ func (s *Service) Note(ctx context.Context, id, text string) (NoteResult, error)
 	if text == "" {
 		return NoteResult{}, errf(KindInvalid, "note text is empty")
 	}
+	if err := s.scanSecrets(ctx, text); err != nil {
+		return NoteResult{}, err
+	}
 
 	var out NoteResult
 	spec := store.WriteSpec{

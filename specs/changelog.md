@@ -17,6 +17,10 @@ top-level CHANGELOG.md and are written at release time from this file.
   extend limit, transition table, min_version; validate lease_max and
   config findings; release role fixed to come from the ticket's kind;
   first dependency BurntSushi/toml, ADR-0004) — handed over 2026-11-02
+- Protection of R-4 (exit codes 17/18/19 per ADR-0004: force-release
+  with admins fail-closed, ticket quota, secret scan before writes and
+  in validate; prefix-register warnings; `dk guide`) — handed over
+  2026-11-02
 
 ## Shipped
 

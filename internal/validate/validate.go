@@ -78,6 +78,7 @@ func Store(ctx context.Context, st *store.Store) ([]Finding, error) {
 	tickets, stages := checkCurrentState(ctx, st, r)
 	checkReferences(tickets, stages, r)
 	checkLeaseBounds(tickets, cfg, r)
+	checkPrefixRegister(ctx, st, stages, r)
 	if err := checkHistory(ctx, st, cfg, r); err != nil {
 		return nil, err
 	}
@@ -107,6 +108,37 @@ func loadConfig(ctx context.Context, st *store.Store, r *report) *config.Config 
 		return config.Defaults()
 	}
 	return cfg
+}
+
+// checkPrefixRegister warns about ticket prefixes that are not in
+// prefixes.toml on main. The register is governance: a missing entry is
+// a warning, not an error, and without a register file nothing is checked.
+func checkPrefixRegister(ctx context.Context, st *store.Store, stages map[string]ticket.Stage, r *report) {
+	data, err := st.ConfigFile(ctx, "prefixes.toml")
+	if err != nil || len(data) == 0 {
+		return // no register: nothing to check
+	}
+	reg, perr := config.ParsePrefixes(data)
+	if perr != nil {
+		r.warn("", "prefixes-invalid", "prefixes.toml: %v", perr)
+		return
+	}
+	if len(reg) == 0 {
+		return
+	}
+	registered := map[string]bool{}
+	for _, p := range reg {
+		registered[p] = true
+	}
+	for id := range stages {
+		prefix := id
+		if i := strings.LastIndexByte(id, '-'); i > 0 {
+			prefix = id[:i]
+		}
+		if !registered[prefix] {
+			r.warn(id, "prefix-not-registered", "prefix %q is not in prefixes.toml", prefix)
+		}
+	}
 }
 
 // checkLeaseBounds enforces the lease_max bound from the config: the

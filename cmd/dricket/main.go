@@ -20,7 +20,8 @@ import (
 // independent of the on-disk ticket schema_version.
 const jsonSchemaVersion = 1
 
-// Exit codes are a public interface (docs/CONCEPT.md, "Exit codes").
+// Exit codes are a public interface (docs/CONCEPT.md, "Exit codes";
+// 17-19 added for stage v2, ADR-0004).
 const (
 	exitOK            = 0  // ok
 	exitError         = 1  // general error
@@ -32,6 +33,9 @@ const (
 	exitInvalid       = 14 // invalid transition or validation error
 	exitNetwork       = 15 // network or push failure after all attempts
 	exitTooOld        = 16 // tool too old or unknown schema version
+	exitForbidden     = 17 // permission denied (e.g. force-release by a non-admin)
+	exitQuota         = 18 // quota exceeded (new tickets per owner and period)
+	exitSecret        = 19 // refused write: the secret scan found likely credentials
 	exitLeasesExpired = 20 // leases --check found expired leases
 )
 

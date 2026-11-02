@@ -221,7 +221,12 @@ def write(ticket_id, precond, mutate, message):
 | 14 | invalid transition or validation error |
 | 15 | network or push failure after all attempts |
 | 16 | tool too old or unknown schema version |
+| 17 | forbidden (permission denied, e.g. force-release by a non-admin) |
+| 18 | quota exceeded (new tickets per owner and period) |
+| 19 | refused write: the secret scan found likely credentials |
 | 20 | `leases --check` found expired leases |
+
+Codes 17 to 19 were added for stage v2; see ADR-0004.
 
 **Idempotency.** `claim` on a ticket you already own returns exit 0. So does `release` on an already free ticket. A wrapper can safely repeat after a crash.
 
