@@ -153,6 +153,7 @@ Index only; details in `docs/adr/`.
 | [0003](adr/0003-gpl-3-or-later.md) | License GPL-3.0-or-later | accepted |
 | [0004](adr/0004-stage-v2-config-and-exit-codes.md) | Stage v2: dricket.toml, TOML library, new exit codes | accepted |
 | [0005](adr/0005-ticket-priorities.md) | Ticket priorities (stage v2) | accepted |
+| [0006](adr/0006-next-orders-by-priority.md) | next orders by priority first | accepted |
 
 ## 10. Quality requirements
 

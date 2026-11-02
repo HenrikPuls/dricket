@@ -53,11 +53,28 @@ func eligible(tk ticket.Ticket, stages map[string]ticket.Stage, now time.Time) b
 	return true
 }
 
-// Next picks the next suitable ticket: lowest number first within the
-// lowest prefix. Kind not-found (exit 10) when nothing qualifies.
+// Next picks the next suitable ticket: highest configured priority first
+// (the order of [priorities].values defines the rank), then the lowest
+// number within the lowest prefix. Kind not-found (exit 10) when nothing
+// qualifies.
 func (s *Service) Next(ctx context.Context, opts NextOptions) (*NextResult, error) {
 	if err := s.Store.Refresh(ctx); err != nil {
 		return nil, wrapRead(err)
+	}
+	cfg, cerr := s.config(ctx)
+	if cerr != nil {
+		return nil, cerr
+	}
+	rank := map[string]int{}
+	for i, v := range cfg.PriorityValues {
+		rank[v] = i
+	}
+	// Unset or unknown priorities rank last.
+	rankOf := func(p string) int {
+		if r, ok := rank[p]; ok {
+			return r
+		}
+		return len(cfg.PriorityValues)
 	}
 	paths, err := s.Store.List(ctx, "tickets/")
 	if err != nil {
@@ -101,6 +118,10 @@ func (s *Service) Next(ctx context.Context, opts NextOptions) (*NextResult, erro
 		return nil, errf(KindNotFound, "no suitable ticket (open and free, or lease expired, dependencies done)")
 	}
 	sort.Slice(candidates, func(i, j int) bool {
+		r1, r2 := rankOf(candidates[i].Priority), rankOf(candidates[j].Priority)
+		if r1 != r2 {
+			return r1 < r2
+		}
 		p1, n1, e1 := splitID(candidates[i].ID)
 		p2, n2, e2 := splitID(candidates[j].ID)
 		if e1 != nil || e2 != nil {
