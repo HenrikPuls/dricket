@@ -1,0 +1,99 @@
+{
+  "config": {
+    "clones": 10,
+    "duration": 600000000000,
+    "lease": 240000000000,
+    "grace": 20000000000,
+    "crash_probability": 0.05,
+    "seed": 42,
+    "max_attempts": 8,
+    "total_timeout": 30000000000,
+    "backoff_base": 200000000,
+    "backoff_cap": 5000000000
+  },
+  "ops": {
+    "abandon": {
+      "Attempts": 39,
+      "Success": 39,
+      "Idempotent": 0,
+      "PushReject": 0,
+      "FinalFail": 0
+    },
+    "add": {
+      "Attempts": 373,
+      "Success": 172,
+      "Idempotent": 0,
+      "PushReject": 809,
+      "FinalFail": 201
+    },
+    "claim": {
+      "Attempts": 589,
+      "Success": 274,
+      "Idempotent": 10,
+      "PushReject": 629,
+      "Precond": {
+        "claimed-by-other": 55
+      },
+      "FinalFail": 250
+    },
+    "release": {
+      "Attempts": 213,
+      "Success": 111,
+      "Idempotent": 0,
+      "PushReject": 194,
+      "FinalFail": 102
+    },
+    "update": {
+      "Attempts": 483,
+      "Success": 241,
+      "Idempotent": 0,
+      "PushReject": 584,
+      "Precond": {
+        "claim-lost": 1
+      },
+      "FinalFail": 241
+    }
+  },
+  "latency_ms": {
+    "abandon": {
+      "n": 39,
+      "p50_ms": 0,
+      "p95_ms": 0,
+      "p99_ms": 0,
+      "max_ms": 0
+    },
+    "add": {
+      "n": 172,
+      "p50_ms": 1557.6243,
+      "p95_ms": 6090.1278,
+      "p99_ms": 9863.3714,
+      "max_ms": 10188.6526
+    },
+    "claim": {
+      "n": 274,
+      "p50_ms": 654.0788,
+      "p95_ms": 3928.2104,
+      "p99_ms": 10761.1386,
+      "max_ms": 22468.6604
+    },
+    "release": {
+      "n": 111,
+      "p50_ms": 703.5722,
+      "p95_ms": 4190.1629,
+      "p99_ms": 6419.3624,
+      "max_ms": 9962.0273
+    },
+    "update": {
+      "n": 241,
+      "p50_ms": 620.3549,
+      "p95_ms": 5399.7481,
+      "p99_ms": 10269.608,
+      "max_ms": 21436.7875
+    }
+  },
+  "commits": 798,
+  "commits_per_hour": 4721.380088377615,
+  "duration_sec": 608.4661574,
+  "violations": null,
+  "result": "PASS"
+}

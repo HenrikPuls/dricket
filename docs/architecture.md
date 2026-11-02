@@ -164,7 +164,7 @@ Index only; details in `docs/adr/`.
 
 | Risk | Owner | Trigger to revisit |
 |---|---|---|
-| Git contention under real load | maintainer | R-1 shows unacceptable rejects |
+| Git contention under real load | maintainer | spike passed at ~100× assumed load; first run against the real host |
 | No merge gate for epoch trailers | maintainer | first code-repo host chosen |
 | Path-level push rules unavailable on a GitHub free plan | path rules are detected by `validate`, not prevented | first real ticket store on a free-plan host |
 | Credentials for non-developer frontend users | maintainer | first frontend integration |
