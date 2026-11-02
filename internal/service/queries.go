@@ -29,6 +29,7 @@ type ListFilter struct {
 	Stage  string
 	Owner  string // "@me" resolves to the service owner
 	Prefix string
+	Stale  bool // only tickets whose lease expired (dead claims)
 }
 
 // List returns tickets from the current head, sorted by id.
@@ -79,6 +80,9 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]ListItem, []string,
 			continue
 		}
 		if owner != "" && tk.Owner != owner {
+			continue
+		}
+		if f.Stale && (tk.Owner == "" || !tk.LeaseUntil.Add(Grace).Before(s.Now())) {
 			continue
 		}
 		items = append(items, ListItem{

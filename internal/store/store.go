@@ -300,3 +300,54 @@ func firstLine(s string) string {
 	}
 	return s
 }
+
+// ------------------------------------------------------- local state ----
+
+// DataDir returns the directory that holds the private working copies.
+func (s *Store) DataDir() string { return s.opts.DataDir }
+
+// StateDir returns a directory for local, disposable state belonging to this
+// store and profile (inbox markers and the like). It is a sibling of the
+// working copy, so `git clean` can never remove it, and it is per profile
+// because the working copy name already contains the owner.
+func (s *Store) StateDir() (string, error) {
+	dir := filepath.Join(s.opts.DataDir, filepath.Base(s.dir)+".state")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return "", fmt.Errorf("state dir: %w", err)
+	}
+	return dir, nil
+}
+
+// LastChange returns the commit time of the most recent change to a path;
+// ok is false when the path has no history. Call Refresh first so the local
+// branch matches the remote state.
+func (s *Store) LastChange(ctx context.Context, path string) (time.Time, bool) {
+	if !s.hasRef {
+		return time.Time{}, false
+	}
+	out, _, err := s.git(ctx, "log", "-1", "--format=%cI", "--", path)
+	if err != nil {
+		return time.Time{}, false
+	}
+	t := strings.TrimSpace(out)
+	if t == "" {
+		return time.Time{}, false
+	}
+	ts, err := time.Parse(time.RFC3339, t)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return ts, true
+}
+
+// PushDryRun contacts the remote and reports whether a push of the current
+// head would be accepted, without transferring anything. A no-op push
+// cannot fully prove branch-protection rights; callers must say so.
+func (s *Store) PushDryRun(ctx context.Context) error {
+	_, stderr, err := s.git(ctx, "push", "--dry-run", "origin",
+		fmt.Sprintf("HEAD:refs/heads/%s", s.opts.branch()))
+	if err != nil {
+		return errors.New(firstLine(stderr))
+	}
+	return nil
+}
