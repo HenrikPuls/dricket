@@ -12,11 +12,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -181,9 +183,10 @@ func (s *Store) fetch(ctx context.Context) error {
 	}
 }
 
-// refresh brings the working copy to the fetched head. After it, Has and
-// ReadFile read the fresh remote state.
-func (s *Store) refresh(ctx context.Context) error {
+// Refresh brings the working copy to the fetched head. After it, Has and
+// ReadFile read the fresh remote state. Read-only commands call this once;
+// the write loop calls it on every attempt.
+func (s *Store) Refresh(ctx context.Context) error {
 	if err := s.fetch(ctx); err != nil {
 		return err
 	}
@@ -198,6 +201,9 @@ func (s *Store) refresh(ctx context.Context) error {
 	}
 	return nil
 }
+
+// refresh is the internal alias used by the write loop.
+func (s *Store) refresh(ctx context.Context) error { return s.Refresh(ctx) }
 
 // Has reports whether a path exists on the current head.
 func (s *Store) Has(ctx context.Context, path string) (bool, error) {
@@ -260,7 +266,9 @@ func checkRefName(ctx context.Context, name string) error {
 
 var unsafeChars = regexp.MustCompile(`[^a-z0-9]+`)
 
-// slug derives a filesystem-safe directory name from a remote or owner id.
+// slug derives a filesystem-safe, collision-resistant directory name from
+// a remote or owner id: readable prefix plus a hash of the full input, so
+// two long paths that share a prefix never share a working copy.
 func slug(s string) string {
 	s = strings.ToLower(s)
 	parts := unsafeChars.Split(s, -1)
@@ -270,14 +278,16 @@ func slug(s string) string {
 			keep = append(keep, p)
 		}
 	}
-	if len(keep) == 0 {
-		return "x"
-	}
 	joined := strings.Join(keep, "-")
 	if len(joined) > 40 {
 		joined = joined[:40]
 	}
-	return joined
+	if joined == "" {
+		joined = "x"
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s))
+	return joined + "-" + strconv.FormatUint(uint64(h.Sum32()), 16)
 }
 
 func firstLine(s string) string {

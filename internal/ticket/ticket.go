@@ -394,9 +394,8 @@ func Lint(t Ticket) []Finding {
 		if !t.LeaseUntil.IsZero() {
 			add("lease_until", "set while the ticket is not claimed")
 		}
-		if t.Epoch != 0 {
-			add("epoch", "must be 0 while the ticket is not claimed")
-		}
+		// The epoch is a fencing token: it rises on every claim and stays
+		// after a release; it is never reset.
 		if t.Extensions != 0 {
 			add("extensions", "must be 0 while the ticket is not claimed")
 		}

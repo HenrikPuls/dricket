@@ -12,6 +12,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/HenrikPuls/dricket/internal/service"
 )
 
 // jsonSchemaVersion is the version of the CLI JSON envelope. It is
@@ -50,15 +52,16 @@ func usageError(format string, a ...any) *cliError {
 
 // env is the command environment: output writers and global flags.
 type env struct {
-	stdout  io.Writer
-	stderr  io.Writer
-	json    bool
-	quiet   bool
-	noColor bool
-	assume  bool // -y
-	dryRun  bool // -n
-	store   string
-	profile string
+	stdout   io.Writer
+	stderr   io.Writer
+	json     bool
+	quiet    bool
+	noColor  bool
+	assume   bool // -y
+	dryRun   bool // -n
+	store    string
+	profile  string
+	svcCache *service.Service
 }
 
 // command is one subcommand of the registry.
@@ -123,7 +126,7 @@ func run(args []string) int {
 			if cerr != nil {
 				return e.fail(cerr)
 			}
-			if data != nil {
+			if data != nil && e.json {
 				e.printData(data)
 			}
 			return exitOK
@@ -174,12 +177,29 @@ func parseGlobals(e *env, args []string) ([]string, any, *cliError) {
 }
 
 // runVersion implements `dricket version`.
-func runVersion(_ *env, _ []string) (any, *cliError) {
-	return map[string]any{
+func runVersion(e *env, _ []string) (any, *cliError) {
+	data := map[string]any{
 		"version": version,
 		"commit":  commit,
 		"date":    date,
-	}, nil
+	}
+	if !e.json {
+		for k, v := range data {
+			e.outf("%s: %v\n", k, v)
+		}
+	}
+	return data, nil
+}
+
+// outf writes data to stdout; write errors are deliberately ignored (a
+// closed pipe ends the output, it is not a tool failure).
+func (e *env) outf(format string, a ...any) {
+	_, _ = fmt.Fprintf(e.stdout, format, a...)
+}
+
+// msg writes a message to stderr.
+func (e *env) msg(format string, a ...any) {
+	_, _ = fmt.Fprintf(e.stderr, format, a...)
 }
 
 // printData writes command data: JSON on stdout with --json, plain
@@ -237,7 +257,8 @@ func (e *env) fail(err *cliError) int {
 func usageText() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "dricket (%s) - Git-native ticketing for humans and AI agents\n\n", version)
-	b.WriteString("Usage: dricket [global flags] <command> [args]\n\n")
+	b.WriteString("Usage: dricket [global flags] <command> [flags] [args]\n\n")
+	b.WriteString("Command flags come before positional arguments.\n")
 	b.WriteString("Global flags:\n")
 	b.WriteString("  --json            data output as JSON with schema_version\n")
 	b.WriteString("  -q, --quiet       suppress non-essential messages\n")
