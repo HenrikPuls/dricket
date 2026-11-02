@@ -75,15 +75,10 @@ type command struct {
 	run      func(e *env, args []string) (any, *cliError)
 }
 
-// registry holds the implemented commands. Planned commands from
-// docs/CONCEPT.md are added by their roadmap items, not before.
-var registry = []command{
-	{
-		name:     "version",
-		synopsis: "print the tool version",
-		run:      runVersion,
-	},
-}
+// registry holds the implemented commands; rootCmds and serviceCmds are
+// appended in commands.go. Planned commands from docs/CONCEPT.md are
+// added by their roadmap items, not before.
+var registry []command
 
 // version is set at build time (GoReleaser ldflags).
 var (

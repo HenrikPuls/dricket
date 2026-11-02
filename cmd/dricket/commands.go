@@ -32,18 +32,33 @@ var serviceCmds = []command{
 	{name: "leases", synopsis: "show leases and their status", run: runLeases},
 	{name: "inbox", synopsis: "what is new for a ticket", run: runInbox},
 	{name: "show", synopsis: "display a ticket", run: runShow},
-	{name: "guide", synopsis: "print the agent guide", run: runGuide},
 	{name: "force-release", synopsis: "admin release with a reason", run: runForceRelease},
 	{name: "lint", synopsis: "check tickets", run: runLint},
 	{name: "doctor", synopsis: "check the local setup", run: runDoctor},
 }
 
-func init() { registry = append(registry, serviceCmds...) }
+// rootCmds are the commands that work without a store behind them.
+var rootCmds = []command{
+	{name: "version", synopsis: "print the tool version", run: runVersion},
+	{name: "init", synopsis: "set up a ticket store in a directory or at a URL", run: runInit},
+	{name: "setup-agent", synopsis: "point AGENTS.md at this store", run: runSetupAgent},
+	{name: "guide", synopsis: "print the agent guide", run: runGuide},
+}
 
-// identity resolves the owner id and git author identity for this
-// invocation: DK_OWNER overrides the default user@host.
+func init() {
+	registry = append(rootCmds, serviceCmds...)
+}
+
+// identity resolves the profile for this invocation: --profile or
+// DK_PROFILE selects an entry from the user's config.toml; without one,
+// the default profile (config entry or the OS identity). DK_OWNER
+// overrides the owner id.
 func (e *env) identity() (profile.Profile, error) {
-	prof, err := profile.Default()
+	name := e.profile
+	if name == "" {
+		name = os.Getenv("DK_PROFILE")
+	}
+	prof, err := profile.Resolve(name)
 	if err != nil {
 		return profile.Profile{}, err
 	}
@@ -77,6 +92,9 @@ func (e *env) svc() (*service.Service, *cliError) {
 		return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 	}
 	opts.Profile = prof
+	// Runner profiles carry their own key: nothing may leak in from the
+	// user's global git configuration (docs/CONCEPT.md, profiles).
+	opts.IsolateGitConfig = prof.SSHKey != ""
 	// DK_DATA_DIR overrides where private working copies live (tests and
 	// machines with several checkouts).
 	if d := os.Getenv("DK_DATA_DIR"); d != "" {
