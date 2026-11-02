@@ -105,12 +105,61 @@ head, inside the precondition of the write above. If two adds race, one
 push wins; the other recomputes N on its next attempt and takes the next
 number. Collisions are impossible; gaps can happen.
 
+## Configuration (dricket.toml)
+
+`dricket.toml` lives on the protected `main` branch and is maintained by
+admins through pull requests — never through `dk`. The tool fetches
+`main` into the private local ref `refs/dricket/config` (with
+`--no-write-fetch-head`, so the ticket protocol's `FETCH_HEAD` is never
+touched) and caches it for the process. Defaults apply when the remote
+has no `main` branch or no file; a broken file is a hard error for every
+operation that needs limits, and a `config-invalid` finding in
+`validate` (which keeps working with defaults).
+
+```toml
+schema_version = 1        # this tool reads 1
+min_version = "0.2.0"     # optional; an older tool exits 16 ("dev" skips)
+
+[limits]
+lease_s = "2h"            # starting leases by size
+lease_m = "8h"
+lease_l = "24h"
+lease_min = "15m"         # clamps every granted lease
+lease_max = "72h"         # clamps claims and bounds validate
+max_extensions = 3
+
+[security]
+admins = ["henrik"]       # force-release; an empty list means nobody
+quota_tickets_per_day = 50   # new tickets per owner and day; 0 disables
+secret_scan = true        # refuse likely credentials before they land
+
+[transitions.agent]       # agent stage moves; human/admin are fixed
+open = ["in-progress", "blocked", "needs-input"]
+in-progress = ["review", "blocked", "needs-input", "open"]
+blocked = ["in-progress", "open"]
+needs-input = ["in-progress", "open"]
+review = ["in-progress"]
+```
+
+Parsing is strict: unknown keys, unknown stages, non-positive durations
+and a wrong `schema_version` are errors with the line named. Missing
+roles or stages in `[transitions.agent]` keep the defaults shown above;
+an explicit empty list means "no moves from this stage". The lease is
+the size value raised to `lease_min` and capped at `lease_max`; a claim
+made before a tightening keeps its old lease until the next claim or
+extend, and `validate` then reports `lease-too-long`.
+
+`grace` is deliberately not configurable: it is part of the fencing
+model and changes only with an ADR. See ADR-0004 for the decisions
+behind this file and the TOML library.
+
 ## Claims
 
 - `claim` sets `owner`, `kind`, `size`, `claimed_at`, `lease_until`,
   raises `epoch` by one and `rev` by one. Only the push decides.
-- Lease starting values by size: S 2 h, M 8 h, L 24 h; the takeover grace
-  is 20 minutes (all configuration values).
+- Lease starting values by size: S 2 h, M 8 h, L 24 h (dricket.toml
+  defaults, clamped by `lease_min`/`lease_max`); the takeover grace is 20
+  minutes and deliberately not configurable.
 - After `lease_until` plus grace another actor may take over: a claim that
   raises `epoch` again and logs `takeover`.
 - `claim` on a ticket the caller already owns succeeds without a commit
@@ -189,12 +238,15 @@ jobs. Exit 14 with the findings, warnings do not fail.
 
 - current state: every file under `tickets/` parses, passes lint, has the
   id its path says; comments carry matching number, ticket and author;
-  `depends` and `parent` exist; the dependency graph has no cycles;
+  `depends` and `parent` exist; the dependency graph has no cycles; the
+  granted lease of every claim is within `limits.lease_max` from
+  dricket.toml;
 - history replay: identity fields never changed, `rev` rose by exactly
   one per write, `epoch` never decreased, every ownership change was a
   claim, a release or a takeover after `lease_until` plus grace, stage
-  moves match the role's allowed transitions, comments stayed add-only,
-  nothing was deleted, one ticket per commit.
+  moves match the transitions of dricket.toml (or the defaults without a
+  config), comments stayed add-only, nothing was deleted, one ticket per
+  commit.
 
 `dk validate --trailers <git-range>` runs in a code repository and checks
 every commit of the range for the dricket trailers (`Dricket-Ticket`,

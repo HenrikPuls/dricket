@@ -85,6 +85,9 @@ func (e *env) svc() (*service.Service, *cliError) {
 		return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 	}
 	e.svcCache = service.New(st, prof.OwnerID)
+	// "dev" skips the min_version check of dricket.toml; released builds
+	// carry their real version via ldflags.
+	e.svcCache.ToolVersion = version
 	return e.svcCache, nil
 }
 

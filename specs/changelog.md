@@ -13,6 +13,10 @@ top-level CHANGELOG.md and are written at release time from this file.
 - Store: R-10 — handed over 2026-11-02
 - Core commands: R-11 — handed over 2026-11-02
 - Leases and checks: R-3 — handed over 2026-11-02
+- Configuration core of R-4 (dricket.toml: lease limits with clamping,
+  extend limit, transition table, min_version; validate lease_max and
+  config findings; release role fixed to come from the ticket's kind;
+  first dependency BurntSushi/toml, ADR-0004) — handed over 2026-11-02
 
 ## Shipped
 

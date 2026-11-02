@@ -49,8 +49,10 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (string, error) {
 	if req.Kind == "" {
 		req.Kind = ticket.KindAgent
 	}
+	var lease time.Duration
 	if !req.Unclaimed {
-		if _, err := leaseFor(req.Size); err != nil {
+		var err error
+		if lease, err = s.leaseFor(ctx, req.Size); err != nil {
 			return "", err
 		}
 	}
@@ -91,7 +93,7 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (string, error) {
 			if !req.Unclaimed {
 				tk.Owner = s.Owner
 				tk.ClaimedAt = now
-				tk.LeaseUntil = now.Add(leaseDuration(req.Size))
+				tk.LeaseUntil = now.Add(lease)
 				tk.Epoch = 1
 				tk.Rev = 1
 				tk.Stage = ticket.StageInProgress
@@ -112,17 +114,6 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (string, error) {
 		return "", err
 	}
 	return id, nil
-}
-
-func leaseDuration(size ticket.Size) time.Duration {
-	switch size {
-	case ticket.SizeS:
-		return LeaseS
-	case ticket.SizeL:
-		return LeaseL
-	default:
-		return LeaseM
-	}
 }
 
 func bodyFor(description string) string {
@@ -154,12 +145,16 @@ func (s *Service) Claim(ctx context.Context, id string, size ticket.Size, kind t
 	if size == "" {
 		size = ticket.SizeM
 	}
-	lease, err := leaseFor(size)
+	lease, err := s.leaseFor(ctx, size)
 	if err != nil {
 		return ClaimResult{}, err
 	}
 	if kind == "" {
 		kind = ticket.KindAgent
+	}
+	cfg, cerr := s.config(ctx)
+	if cerr != nil {
+		return ClaimResult{}, cerr
 	}
 
 	var result ClaimResult
@@ -190,7 +185,7 @@ func (s *Service) Claim(ctx context.Context, id string, size ticket.Size, kind t
 				}
 				result.Takeover = true
 			}
-			if !ticket.CanTransition(roleOf(kind), tk.Stage, ticket.StageInProgress) && tk.Stage != ticket.StageInProgress {
+			if !ticket.CanTransitionTable(cfg.Transitions, roleOf(kind), tk.Stage, ticket.StageInProgress) && tk.Stage != ticket.StageInProgress {
 				return errf(KindInvalid, "%s may not move %s from %s to %s",
 					roleOf(kind), id, tk.Stage, ticket.StageInProgress)
 			}
@@ -266,6 +261,10 @@ func (s *Service) Release(ctx context.Context, id string, stage ticket.Stage, re
 		stage = ticket.StageReview
 	}
 	result = sanitize(strings.TrimSpace(result), MaxBody)
+	cfg, cerr := s.config(ctx)
+	if cerr != nil {
+		return ReleaseResult{}, cerr
+	}
 
 	var out ReleaseResult
 	spec := store.WriteSpec{
@@ -283,9 +282,12 @@ func (s *Service) Release(ctx context.Context, id string, stage ticket.Stage, re
 			if tk.Owner != s.Owner {
 				return errf(KindClaimed, "ticket %s is claimed by %s, not by you", id, tk.Owner)
 			}
-			if !ticket.CanTransition(ticket.RoleAgent, tk.Stage, stage) {
-				// Agents release up to review; humans may set done.
-				return errf(KindInvalid, "a release to %s is not allowed from %s for an agent", stage, tk.Stage)
+			// The role comes from the kind of the claim (concept: the
+			// role comes from `kind`); before stage v2 this check
+			// wrongly used the agent role for every release.
+			if !ticket.CanTransitionTable(cfg.Transitions, roleOf(tk.Kind), tk.Stage, stage) {
+				return errf(KindInvalid, "%s may not release %s from %s to %s",
+					roleOf(tk.Kind), id, tk.Stage, stage)
 			}
 			return nil
 		},

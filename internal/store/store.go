@@ -363,6 +363,36 @@ func (s *Store) PushDryRun(ctx context.Context) error {
 	return nil
 }
 
+// ------------------------------------------------------------ config ----
+
+// configRef is the local ref where the protected main branch lands. A
+// private namespace, so FETCH_HEAD — which the ticket protocol uses — is
+// never touched by config reads.
+const configRef = "refs/dricket/config"
+
+// ConfigFile returns the content of a file from the protected main branch
+// of the remote (for example dricket.toml), or nil when the remote has no
+// main branch or the file does not exist. Callers decide whether that
+// means defaults or an error. Parse errors are the caller's business: a
+// broken config is a hard error for writes and a finding in validate.
+func (s *Store) ConfigFile(ctx context.Context, name string) ([]byte, error) {
+	// --no-write-fetch-head keeps FETCH_HEAD, which the ticket protocol
+	// reads against, pointing at the ticket branch.
+	_, stderr, err := s.git(ctx, "fetch", "--quiet", "--no-write-fetch-head", "origin",
+		fmt.Sprintf("+refs/heads/main:%s", configRef))
+	if err != nil {
+		if strings.Contains(stderr, "couldn't find remote ref") {
+			return nil, nil // no main branch: defaults apply
+		}
+		return nil, fmt.Errorf("fetch origin main: %s", firstLine(stderr))
+	}
+	out, _, err := s.git(ctx, "show", configRef+":"+name)
+	if err != nil {
+		return nil, nil // file absent on main: defaults apply
+	}
+	return []byte(out), nil
+}
+
 // ------------------------------------------------------------ history ----
 
 // FileChange is one entry of a commit's change list; Status is the git

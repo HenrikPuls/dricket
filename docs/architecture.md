@@ -76,6 +76,7 @@ flowchart TB
 | CLI | Parse arguments, print data and messages, map errors to exit codes | `cmd/dricket/` |
 | service | One function per use case (claim, release, extend, ...) | `internal/service/` |
 | ticket | Ticket model, field classes, stage transitions per role | `internal/ticket/` |
+| config | dricket.toml: lease limits, admins, quota, transitions | `internal/config/` |
 | frontmatter | Strict parser for the flat front matter, lint | `internal/frontmatter/` |
 | store | Git as subprocess, fetch/commit/push loop, backoff, private working copy | `internal/store/` |
 | validate | Schema and path rules, immutability over the commit diff | `internal/validate/` |
@@ -150,6 +151,7 @@ Index only; details in `docs/adr/`.
 | [0001](adr/0001-claim-by-push.md) | Claims are decided by a Git push | accepted |
 | [0002](adr/0002-go-and-git-cli.md) | Go, with git invoked through the git CLI | accepted |
 | [0003](adr/0003-gpl-3-or-later.md) | License GPL-3.0-or-later | accepted |
+| [0004](adr/0004-stage-v2-config-and-exit-codes.md) | Stage v2: dricket.toml, TOML library, new exit codes | accepted |
 
 ## 10. Quality requirements
 

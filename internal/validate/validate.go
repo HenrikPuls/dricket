@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/HenrikPuls/dricket/internal/config"
 	"github.com/HenrikPuls/dricket/internal/frontmatter"
 	"github.com/HenrikPuls/dricket/internal/service"
 	"github.com/HenrikPuls/dricket/internal/store"
@@ -59,20 +60,25 @@ func (r *report) warn(id, kind, format string, a ...any) {
 }
 
 // Store validates the whole ticket branch: the current state (parse,
-// lint, references, cycles, comment shape) and the replayed history
-// (identity immutable, rev +1 per write, epoch never decreasing, legal
-// ownership and stage transitions per role, comments add-only, nothing
-// deleted). The replay judges by the timestamps the tickets carry, not by
-// wall-clock time.
+// lint, references, cycles, comment shape, lease bounds, secret scan) and
+// the replayed history (identity immutable, rev +1 per write, epoch never
+// decreasing, legal ownership and stage transitions per role, comments
+// add-only, nothing deleted). The replay judges by the timestamps the
+// tickets carry, not by wall-clock time. The dricket.toml from main
+// provides the limits and the transition table; a broken config is
+// reported as a finding and the defaults apply so the rest still runs.
 func Store(ctx context.Context, st *store.Store) ([]Finding, error) {
 	if err := st.Refresh(ctx); err != nil {
 		return nil, fmt.Errorf("refresh: %w", err)
 	}
 	r := &report{}
 
+	cfg := loadConfig(ctx, st, r)
+
 	tickets, stages := checkCurrentState(ctx, st, r)
 	checkReferences(tickets, stages, r)
-	if err := checkHistory(ctx, st, r); err != nil {
+	checkLeaseBounds(tickets, cfg, r)
+	if err := checkHistory(ctx, st, cfg, r); err != nil {
 		return nil, err
 	}
 	sort.Slice(r.findings, func(i, j int) bool {
@@ -82,6 +88,43 @@ func Store(ctx context.Context, st *store.Store) ([]Finding, error) {
 		return r.findings[i].Kind < r.findings[j].Kind
 	})
 	return r.findings, nil
+}
+
+// loadConfig reads dricket.toml from main and reports problems as
+// findings; the defaults keep the rest of the run working.
+func loadConfig(ctx context.Context, st *store.Store, r *report) *config.Config {
+	data, err := st.ConfigFile(ctx, "dricket.toml")
+	if err != nil {
+		r.add("", "config-unreadable", "%v", err)
+		return config.Defaults()
+	}
+	if len(data) == 0 {
+		return config.Defaults()
+	}
+	cfg, perr := config.Parse(data)
+	if perr != nil {
+		r.add("", "config-invalid", "%v (writes through the tool fail until this is fixed)", perr)
+		return config.Defaults()
+	}
+	return cfg
+}
+
+// checkLeaseBounds enforces the lease_max bound from the config: the
+// granted lease (lease_until minus claimed_at) must not exceed it. This
+// is the check deferred from R-3 until the config existed.
+func checkLeaseBounds(tickets map[string]ticket.Ticket, cfg *config.Config, r *report) {
+	if cfg.LeaseMax <= 0 {
+		return
+	}
+	for _, tk := range tickets {
+		if tk.Owner == "" || tk.ClaimedAt.IsZero() || tk.LeaseUntil.IsZero() {
+			continue
+		}
+		if granted := tk.LeaseUntil.Sub(tk.ClaimedAt); granted > cfg.LeaseMax {
+			r.add(tk.ID, "lease-too-long",
+				"granted lease %s exceeds limits.lease_max %s", granted, cfg.LeaseMax)
+		}
+	}
 }
 
 // checkCurrentState parses every file under tickets/ and lints it.
@@ -227,7 +270,7 @@ func checkReferences(tickets map[string]ticket.Ticket, stages map[string]ticket.
 }
 
 // checkHistory replays every commit that touched the ticket tree.
-func checkHistory(ctx context.Context, st *store.Store, r *report) error {
+func checkHistory(ctx context.Context, st *store.Store, cfg *config.Config, r *report) error {
 	commits, err := st.Commits(ctx)
 	if err != nil {
 		return fmt.Errorf("commits: %w", err)
@@ -253,13 +296,13 @@ func checkHistory(ctx context.Context, st *store.Store, r *report) error {
 			r.add("", "multi-ticket-commit", "%s touches %d tickets; the tool writes one ticket per commit", short(c), len(touched))
 		}
 		for _, ch := range changes {
-			checkHistoryChange(ctx, st, c, ch, r)
+			checkHistoryChange(ctx, st, c, ch, cfg, r)
 		}
 	}
 	return nil
 }
 
-func checkHistoryChange(ctx context.Context, st *store.Store, commit string, ch store.FileChange, r *report) {
+func checkHistoryChange(ctx context.Context, st *store.Store, commit string, ch store.FileChange, cfg *config.Config, r *report) {
 	p := ch.Path
 	shortCommit := short(commit)
 	if !strings.HasPrefix(p, "tickets/") {
@@ -280,7 +323,7 @@ func checkHistoryChange(ctx context.Context, st *store.Store, commit string, ch 
 			}
 			checkCreation(id, content, r)
 		default:
-			checkTransition(ctx, st, commit, p, id, r)
+			checkTransition(ctx, st, commit, p, id, cfg, r)
 		}
 	case strings.HasSuffix(p, ".md") && strings.Contains(p, "/comments/"):
 		switch ch.Status {
@@ -326,7 +369,7 @@ func checkCreation(id, content string, r *report) {
 }
 
 // checkTransition replays one change to a ticket file against its parent.
-func checkTransition(ctx context.Context, st *store.Store, commit, path, id string, r *report) {
+func checkTransition(ctx context.Context, st *store.Store, commit, path, id string, cfg *config.Config, r *report) {
 	cur, err := st.ShowRev(ctx, commit, path)
 	if err != nil {
 		r.add(id, "read-error", "%s: %v", short(commit), err)
@@ -400,8 +443,9 @@ func checkTransition(ctx context.Context, st *store.Store, commit, path, id stri
 		}
 	}
 	// Stage transitions per role, only when the stage actually moved;
-	// note, extend and comment keep the stage.
-	if curTk.Stage != prevTk.Stage && !ticket.CanTransition(roleOf(curTk.Kind), prevTk.Stage, curTk.Stage) {
+	// note, extend and comment keep the stage. The table comes from
+	// dricket.toml (defaults apply without a config).
+	if curTk.Stage != prevTk.Stage && !ticket.CanTransitionTable(cfg.Transitions, roleOf(curTk.Kind), prevTk.Stage, curTk.Stage) {
 		r.add(id, "illegal-transition", "%s: %s may not move %s from %s to %s",
 			short(commit), roleOf(curTk.Kind), id, prevTk.Stage, curTk.Stage)
 	}

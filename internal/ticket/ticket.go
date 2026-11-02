@@ -417,28 +417,55 @@ func Lint(t Ticket) []Finding {
 	return fs
 }
 
-// CanTransition reports whether role may move a ticket from one stage to
-// another. Agents take a ticket up to review; a human sets done and
-// cancelled and may reopen. The table becomes configurable in stage v2.
-func CanTransition(role Role, from, to Stage) bool {
+// ValidStage reports whether s is one of the known stages.
+func ValidStage(s Stage) bool { return stages[s] }
+
+// ValidRole reports whether r is one of the known roles.
+func ValidRole(r Role) bool {
+	return r == RoleAgent || r == RoleHuman || r == RoleAdmin
+}
+
+// TransitionTable is the configurable form of the stage rules:
+// role -> from stage -> allowed target stages. Human and admin are fixed
+// by the concept (they may move anything); the table carries the agent
+// rules, and Parse fills missing roles with the defaults below.
+type TransitionTable = map[string]map[string][]string
+
+// DefaultTransitions is the starting proposal of docs/CONCEPT.md: agents
+// take a ticket up to review and may park it; a human sets done,
+// cancelled and may reopen.
+func DefaultTransitions() TransitionTable {
+	return map[string]map[string][]string{
+		"agent": {
+			"open":        {"in-progress", "blocked", "needs-input"},
+			"in-progress": {"review", "blocked", "needs-input", "open"},
+			"blocked":     {"in-progress", "open"},
+			"needs-input": {"in-progress", "open"},
+			"review":      {"in-progress"},
+		},
+	}
+}
+
+// CanTransitionTable reports whether role may move a ticket from one stage
+// to another under the given table. Human and admin may always; a role or
+// stage missing from the table means the move is not allowed.
+func CanTransitionTable(table TransitionTable, role Role, from, to Stage) bool {
 	if !stages[from] || !stages[to] {
 		return false
 	}
 	if role == RoleHuman || role == RoleAdmin {
 		return true
 	}
-	if role != RoleAgent {
-		return false
-	}
-	switch from {
-	case StageOpen:
-		return to == StageInProgress || to == StageBlocked || to == StageNeedsInput
-	case StageInProgress:
-		return to == StageReview || to == StageBlocked || to == StageNeedsInput || to == StageOpen
-	case StageBlocked, StageNeedsInput:
-		return to == StageInProgress || to == StageOpen
-	case StageReview:
-		return to == StageInProgress
+	for _, t := range table[string(role)][string(from)] {
+		if Stage(t) == to {
+			return true
+		}
 	}
 	return false
+}
+
+// CanTransition reports whether role may move a ticket from one stage to
+// another under the default table (dricket.toml can override it).
+func CanTransition(role Role, from, to Stage) bool {
+	return CanTransitionTable(DefaultTransitions(), role, from, to)
 }
