@@ -124,8 +124,8 @@ concurrency tests, a fuzz smoke test, govulncheck, a licence check
 (GPLv3-compatible dependencies only) and the docs consistency check. CodeQL
 scans the Go code weekly. Releases are tags built by GoReleaser for linux,
 macOS and Windows on amd64 and arm64, with SHA-256 checksums and a build
-provenance attestation. Action versions get pinned by commit SHA before the
-first release; Dependabot keeps the pins current.
+provenance attestation. Action versions are pinned by commit SHA;
+Dependabot keeps the pins current.
 
 ## 8. Cross-cutting concepts
 
