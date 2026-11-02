@@ -1,0 +1,35 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: dricket version
+      description: Output of `dk --version`
+    validations:
+      required: true
+  - type: input
+    id: git
+    attributes:
+      label: git version and host
+      description: Output of `git --version` and the Git host you use
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Commands you ran, with `--json` output if possible. Remove secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behaviour
+    validations:
+      required: true
+  - type: input
+    id: exit
+    attributes:
+      label: Exit code

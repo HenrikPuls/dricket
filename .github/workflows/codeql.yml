@@ -1,0 +1,37 @@
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '23 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      has_go: ${{ steps.d.outputs.has_go }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: d
+        run: |
+          if [ -f go.mod ]; then echo "has_go=true" >> "$GITHUB_OUTPUT"; else echo "has_go=false" >> "$GITHUB_OUTPUT"; fi
+
+  analyze:
+    needs: detect
+    if: needs.detect.outputs.has_go == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: go
+          build-mode: autobuild
+      - uses: github/codeql-action/analyze@v3

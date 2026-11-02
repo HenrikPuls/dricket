@@ -1,0 +1,122 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# NOTE: action versions are written as tags. Pin them to commit SHAs before the
+# first release (Dependabot keeps SHA pins current). See docs/maintainers/github-setup.md.
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      has_go: ${{ steps.d.outputs.has_go }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: d
+        run: |
+          if [ -f go.mod ]; then echo "has_go=true" >> "$GITHUB_OUTPUT"; else echo "has_go=false" >> "$GITHUB_OUTPUT"; fi
+
+  test:
+    needs: detect
+    if: needs.detect.outputs.has_go == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      # Unit tests plus the multi-process concurrency/invariant tests.
+      # The protocol races are between processes, so the key tests spawn real
+      # clones against a local bare repo. -race only covers in-process races.
+      - run: go test -race -count=1 ./...
+      - name: Fuzz smoke test (front matter parser)
+        run: go test -run '^$' -fuzz 'Fuzz' -fuzztime 30s ./internal/frontmatter/...
+
+  lint:
+    needs: detect
+    if: needs.detect.outputs.has_go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64
+
+  vuln:
+    needs: detect
+    if: needs.detect.outputs.has_go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+  licenses:
+    needs: detect
+    if: needs.detect.outputs.has_go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # Every dependency must be GPLv3-compatible.
+      - run: |
+          go run github.com/google/go-licenses@v1.6.0 check ./... \
+            --allowed_licenses=MIT,BSD-2-Clause,BSD-3-Clause,Apache-2.0,MPL-2.0,ISC,GPL-3.0,LGPL-3.0
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/check_docs.py
+      # Code changed but no changelog entry?
+      - name: Changelog touched when code changed
+        if: github.event_name == 'pull_request'
+        run: |
+          base="origin/${{ github.base_ref }}"
+          changed=$(git diff --name-only "$base"...HEAD)
+          if echo "$changed" | grep -qE '^(cmd|internal)/' \
+             && ! echo "$changed" | grep -q '^specs/changelog.md$'; then
+            echo "Code changed but specs/changelog.md was not updated"; exit 1
+          fi
+
+  # Single required status check for branch protection. Passes when all
+  # real jobs passed or were skipped (no Go code yet).
+  ci:
+    if: always()
+    needs: [detect, test, lint, vuln, licenses, docs]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate results
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if echo '${{ join(needs.*.result, ' ') }}' | grep -Eq 'failure|cancelled'; then
+            echo "A required job failed or was cancelled."; exit 1
+          fi

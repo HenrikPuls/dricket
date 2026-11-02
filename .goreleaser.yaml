@@ -1,0 +1,59 @@
+# GoReleaser v2 configuration.
+# Assumes the entry point is ./cmd/dricket (see AGENTS.md).
+version: 2
+project_name: dricket
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: dricket
+    main: ./cmd/dricket
+    binary: dricket
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    mod_timestamp: '{{ .CommitTimestamp }}'
+  # The short alias `dk` is the same program under a second name.
+  - id: dk
+    main: ./cmd/dricket
+    binary: dk
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    mod_timestamp: '{{ .CommitTimestamp }}'
+
+archives:
+  - id: default
+    ids: [dricket, dk]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: github
+  sort: asc
+
+release:
+  prerelease: auto
+
+# Optional, enable once you have decided on signing:
+# signs:
+#   - cmd: cosign
+#     artifacts: checksum

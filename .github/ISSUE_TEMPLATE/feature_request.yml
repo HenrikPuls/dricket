@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest an addition
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do and what is in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+  - type: textarea
+    id: deferred
+    attributes:
+      label: Related to a deferred item?
+      description: See "Deliberately deferred" in docs/CONCEPT.md. Say whether the stated trigger has occurred.
