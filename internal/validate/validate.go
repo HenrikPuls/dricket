@@ -78,6 +78,7 @@ func Store(ctx context.Context, st *store.Store) ([]Finding, error) {
 	tickets, stages := checkCurrentState(ctx, st, r)
 	checkReferences(tickets, stages, r)
 	checkLeaseBounds(tickets, cfg, r)
+	checkPriorities(tickets, cfg, r)
 	checkPrefixRegister(ctx, st, stages, r)
 	if err := checkHistory(ctx, st, cfg, r); err != nil {
 		return nil, err
@@ -108,6 +109,22 @@ func loadConfig(ctx context.Context, st *store.Store, r *report) *config.Config 
 		return config.Defaults()
 	}
 	return cfg
+}
+
+// checkPriorities validates the free `priority` field against the
+// configured values: an unset priority is a warning, an unknown value is
+// an error.
+func checkPriorities(tickets map[string]ticket.Ticket, cfg *config.Config, r *report) {
+	for _, tk := range tickets {
+		switch tk.Priority {
+		case "":
+			r.warn(tk.ID, "priority-unset", "no priority set (default %s)", cfg.PriorityDefault)
+		default:
+			if err := cfg.CheckPriority(tk.Priority); err != nil {
+				r.add(tk.ID, "priority-invalid", "%v", err)
+			}
+		}
+	}
 }
 
 // checkPrefixRegister warns about ticket prefixes that are not in

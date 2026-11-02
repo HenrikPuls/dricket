@@ -25,6 +25,11 @@ top-level CHANGELOG.md and are written at release time from this file.
   directory with main checked out and seeded ticket branch, or remote
   URL; `dk setup-agent`; user-config profiles with ssh_key and git
   config isolation; doctor shows the profile) — handed over 2026-11-02
+- Priorities (stage v2, owner addition): free field `priority` with the
+  configurable starting set critical/high/normal/low (default normal) in
+  dricket.toml `[priorities]`; `add --priority`, `set priority=...`,
+  columns in ls/next, lint and validate checks; scaffold carries the
+  table; ADR-0005 — handed over 2026-11-02
 
 ## Shipped
 

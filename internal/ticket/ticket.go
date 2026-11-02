@@ -53,7 +53,7 @@ var (
 	}
 	freeFields = map[string]bool{
 		"title": true, "labels": true, "depends": true, "parent": true,
-		"touches": true, "branch": true, "repos": true,
+		"touches": true, "branch": true, "repos": true, "priority": true,
 	}
 )
 
@@ -158,6 +158,7 @@ type Ticket struct {
 	Touches       []string  // free
 	Branch        string    // free, git ref, validated with git check-ref-format later
 	Repos         []string  // free
+	Priority      string    // free, lower-case value from dricket.toml [priorities]
 	Body          string    // everything after the closing ---
 }
 
@@ -198,6 +199,9 @@ func FromDoc(doc frontmatter.Document) (t Ticket, unknown []string, err error) {
 	}
 	if v, ok := get("branch"); ok {
 		t.Branch = v
+	}
+	if v, ok := get("priority"); ok {
+		t.Priority = v
 	}
 	t.Labels = splitList(getOr(doc, "labels"))
 	t.Depends = splitList(getOr(doc, "depends"))
@@ -297,6 +301,7 @@ func (t Ticket) ToDoc() frontmatter.Document {
 		{Key: "epoch", Value: strconv.Itoa(t.Epoch)},
 		{Key: "rev", Value: strconv.Itoa(t.Rev)},
 		{Key: "extensions", Value: strconv.Itoa(t.Extensions)},
+		{Key: "priority", Value: t.Priority},
 		{Key: "labels", Value: strings.Join(t.Labels, ", ")},
 		{Key: "depends", Value: strings.Join(t.Depends, ", ")},
 		{Key: "parent", Value: t.Parent},

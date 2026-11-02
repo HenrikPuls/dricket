@@ -177,6 +177,7 @@ func runAdd(e *env, args []string) (any, *cliError) {
 	unclaimed := fs.Bool("unclaimed", false, "create the ticket without claiming it")
 	size := fs.String("size", "M", "claim size S, M or L")
 	kind := fs.String("kind", "agent", "creator kind agent or human")
+	priority := fs.String("priority", "", "priority from the store's configured values (default from dricket.toml)")
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
@@ -204,6 +205,7 @@ func runAdd(e *env, args []string) (any, *cliError) {
 		Unclaimed:   *unclaimed,
 		Size:        ticket.Size(strings.ToUpper(*size)),
 		Kind:        ticket.Kind(*kind),
+		Priority:    *priority,
 	})
 	if err != nil {
 		return nil, wrapErr(err)
@@ -358,7 +360,7 @@ func runLs(e *env, args []string) (any, *cliError) {
 	}
 	if !e.json {
 		for _, it := range items {
-			e.outf("%-14s %-12s %-20s %s\n", it.ID, it.Stage, it.Owner, it.Title)
+			e.outf("%-14s %-12s %-8s %-20s %s\n", it.ID, it.Stage, it.Priority, it.Owner, it.Title)
 		}
 		if len(items) == 0 {
 			e.msg("no tickets\n")

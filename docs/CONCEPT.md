@@ -87,7 +87,11 @@ tickets/
 | --- | --- | --- |
 | Identity (immutable) | `id`, `created_at`, `created_by`, `schema_version` | nobody after creation; `id` must equal the path |
 | State (tool only) | `stage`, `owner`, `kind`, `claimed_at`, `lease_until`, `size`, `epoch`, `rev`, `extensions` | only through `dk` commands |
-| Free | `title`, `labels`, `depends`, `parent`, `touches`, `branch`, `repos` | owner or a human, validated |
+| Free | `title`, `labels`, `depends`, `parent`, `touches`, `branch`, `repos`; stage v2 adds `priority` (ADR-0005) | owner or a human, validated |
+
+Stage v2 adds the free field `priority` with the configurable starting
+set critical, high, normal, low (default normal), stored lower case like
+every enum; see ADR-0005 and `dricket.toml`'s `[priorities]` table.
 
 **Example.**
 
@@ -107,6 +111,7 @@ lease_until: 2026-11-02T18:02:11Z
 epoch: 3
 rev: 11
 extensions: 0
+priority: high
 labels: bug, auth
 depends: app-6830
 branch: dk/app-6842

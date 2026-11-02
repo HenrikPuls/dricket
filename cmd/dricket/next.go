@@ -39,7 +39,7 @@ func runNext(e *env, args []string) (any, *cliError) {
 		if res.Claim != nil {
 			e.outf("claimed %s (epoch %d, lease until %s)\n", res.ID, res.Claim.Epoch, res.Claim.LeaseUntil)
 		} else {
-			e.outf("%-14s %-11s %s\n", res.ID, res.Stage, res.Title)
+			e.outf("%-14s %-11s %-8s %s\n", res.ID, res.Stage, res.Priority, res.Title)
 		}
 	}
 	return res, nil

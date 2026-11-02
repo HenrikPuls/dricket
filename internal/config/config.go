@@ -39,6 +39,11 @@ type Config struct {
 	QuotaTicketsPerDay int      // new tickets per owner and day; 0 disables
 	SecretScan         bool
 
+	// Priorities: the free field `priority` may only carry values from
+	// this list (starting set critical, high, normal, low).
+	PriorityValues  []string
+	PriorityDefault string
+
 	Transitions ticket.TransitionTable
 }
 
@@ -60,6 +65,10 @@ type raw struct {
 		QuotaTicketsPerDay *int     `toml:"quota_tickets_per_day"`
 		SecretScan         *bool    `toml:"secret_scan"`
 	} `toml:"security"`
+	Priorities struct {
+		Values  []string `toml:"values"`
+		Default string   `toml:"default"`
+	} `toml:"priorities"`
 	Transitions ticket.TransitionTable `toml:"transitions"`
 }
 
@@ -82,6 +91,8 @@ func Defaults() *Config {
 		// tickets. Fifty per day is a generous starting value.
 		QuotaTicketsPerDay: 50,
 		SecretScan:         scan,
+		PriorityValues:     []string{"critical", "high", "normal", "low"},
+		PriorityDefault:    "normal",
 		Transitions:        ticket.DefaultTransitions(),
 	}
 }
@@ -161,6 +172,9 @@ func Parse(data []byte) (*Config, error) {
 	if r.Security.SecretScan != nil {
 		cfg.SecretScan = *r.Security.SecretScan
 	}
+	if err := mergePriorities(cfg, r.Priorities); err != nil {
+		return nil, err
+	}
 	if r.MinVersion != "" && !validVersion(r.MinVersion) {
 		return nil, fmt.Errorf("min_version %q is not dotted integers like \"0.2.0\"", r.MinVersion)
 	}
@@ -168,6 +182,75 @@ func Parse(data []byte) (*Config, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// mergePriorities folds the [priorities] table over the defaults: values
+// are replaced as a set (never extended piecemeal), and the default must
+// be one of them. Without an explicit default, "normal" wins if it is
+// among the values, otherwise the first value.
+func mergePriorities(cfg *Config, p struct {
+	Values  []string `toml:"values"`
+	Default string   `toml:"default"`
+}) error {
+	switch {
+	case p.Values == nil && p.Default == "":
+		return nil // nothing configured: keep the starting set
+	case p.Values == nil:
+		return fmt.Errorf("priorities.default %q given without priorities.values", p.Default)
+	case len(p.Values) == 0:
+		return fmt.Errorf("priorities.values must not be empty; leave the key out for the starting set")
+	}
+	seen := map[string]bool{}
+	for _, v := range p.Values {
+		if v == "" || v != strings.ToLower(v) || !isPriorityWord(v) {
+			return fmt.Errorf("priorities.values: %q is not a lower-case word of letters, digits and dashes", v)
+		}
+		if seen[v] {
+			return fmt.Errorf("priorities.values: %q appears twice", v)
+		}
+		seen[v] = true
+	}
+	cfg.PriorityValues = append([]string{}, p.Values...)
+	switch {
+	case p.Default != "":
+		if !seen[p.Default] {
+			return fmt.Errorf("priorities.default %q is not in priorities.values", p.Default)
+		}
+		cfg.PriorityDefault = p.Default
+	case seen["normal"]:
+		cfg.PriorityDefault = "normal"
+	default:
+		cfg.PriorityDefault = cfg.PriorityValues[0]
+	}
+	return nil
+}
+
+// isPriorityWord accepts lower-case letters, digits and inner dashes.
+func isPriorityWord(s string) bool {
+	for i, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+		case r == '-' && i > 0 && i < len(s)-1:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// CheckPriority reports whether value is an allowed priority; the empty
+// value is allowed here (an unset priority is a lint warning, not an
+// error) - callers that need a concrete value apply PriorityDefault.
+func (c *Config) CheckPriority(value string) error {
+	if value == "" {
+		return nil
+	}
+	for _, v := range c.PriorityValues {
+		if v == value {
+			return nil
+		}
+	}
+	return fmt.Errorf("priority %q is not one of %s", value, strings.Join(c.PriorityValues, ", "))
 }
 
 // ParsePrefixes reads prefixes.toml, the prefix register on main: a list
