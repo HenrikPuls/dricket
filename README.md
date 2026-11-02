@@ -82,14 +82,26 @@ listed under "Deliberately deferred" in the concept.
 
 ## Install
 
-Download a single static binary (`dricket` or the alias `dk`) from the
-[releases page](https://github.com/HenrikPuls/dricket/releases): archives for
-linux, macOS and Windows on amd64 and arm64, plus `checksums.txt` (SHA-256)
-and a build provenance attestation. `git` (2.32 or newer) must be installed.
+Two ways to install:
+
+**Release archive** (recommended): a single static binary from the
+[releases page](https://github.com/HenrikPuls/dricket/releases) — archives
+for linux, macOS and Windows on amd64 and arm64, plus `checksums.txt`
+(SHA-256) and a build provenance attestation. The archives contain the
+program under both names, `dricket` and `dk`.
+
+**`go install`** builds from the module and installs the binary under its
+package name, `dricket` — there is no `dk` on this path; copy or symlink
+it if you want the alias:
 
 ```console
 go install github.com/HenrikPuls/dricket/cmd/dricket@v0.1.0
+cp "$(go env GOPATH)/bin/dricket" "$(go env GOPATH)/bin/dk"   # optional alias
 ```
+
+Make sure the Go bin directory (`go env GOPATH` + `/bin`, on Windows
+`%USERPROFILE%\go\bin`) is on your `PATH`. `git` (2.32 or newer) must be
+installed.
 
 Set up a store and point the tool at it:
 
