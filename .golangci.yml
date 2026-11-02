@@ -1,7 +1,7 @@
-# golangci-lint v1 configuration. Pinned in .github/workflows/ci.yml.
-run:
-  timeout: 5m
+# golangci-lint v2 configuration. Pinned in .github/workflows/ci.yml.
+version: "2"
 linters:
+  default: none
   enable:
     - errcheck
     - govet
