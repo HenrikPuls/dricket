@@ -16,7 +16,7 @@ builds:
     goarch: [amd64, arm64]
     flags: [-trimpath]
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+      - -s -w -X main.version=v{{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
     mod_timestamp: '{{ .CommitTimestamp }}'
   # The short alias `dk` is the same program under a second name.
   - id: dk
@@ -27,7 +27,7 @@ builds:
     goarch: [amd64, arm64]
     flags: [-trimpath]
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+      - -s -w -X main.version=v{{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
     mod_timestamp: '{{ .CommitTimestamp }}'
 
 archives:

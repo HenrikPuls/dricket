@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/HenrikPuls/dricket/internal/service"
@@ -80,12 +81,29 @@ type command struct {
 // added by their roadmap items, not before.
 var registry []command
 
-// version is set at build time (GoReleaser ldflags).
+// version is set at build time (GoReleaser ldflags). A `go install
+// module/cmd@vX` build instead records the module version in its build
+// info; versionData() falls back to it, so released installs report
+// their version too.
 var (
 	version = "dev"
 	commit  = "none"
 	date    = "unknown"
 )
+
+// versionData returns the version information to report. Release builds
+// carry ldflags-injected values; a `go install ...@vX` build carries the
+// module version in its build info; a local checkout build stays "dev".
+func versionData() map[string]any {
+	v := version
+	if v == "dev" || v == "" {
+		if bi, ok := debug.ReadBuildInfo(); ok &&
+			bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+			v = bi.Main.Version
+		}
+	}
+	return map[string]any{"version": v, "commit": commit, "date": date}
+}
 
 // stdout and stderr are variables so tests can capture the output.
 // stdout is data, stderr is messages. Write errors are deliberately
@@ -167,7 +185,7 @@ func parseGlobals(e *env, args []string) ([]string, any, *cliError) {
 		case strings.HasPrefix(a, "--profile="):
 			e.profile = strings.TrimPrefix(a, "--profile=")
 		case a == "--version":
-			return nil, map[string]any{"version": version, "commit": commit, "date": date}, nil
+			return nil, versionData(), nil
 		default:
 			rest = append(rest, a)
 		}
@@ -177,11 +195,7 @@ func parseGlobals(e *env, args []string) ([]string, any, *cliError) {
 
 // runVersion implements `dricket version`.
 func runVersion(e *env, _ []string) (any, *cliError) {
-	data := map[string]any{
-		"version": version,
-		"commit":  commit,
-		"date":    date,
-	}
+	data := versionData()
 	if !e.json {
 		for k, v := range data {
 			e.outf("%s: %v\n", k, v)
