@@ -12,6 +12,8 @@ top-level CHANGELOG.md and are written at release time from this file.
 - Foundations: R-2 — handed over 2026-11-02
 - Store: R-10 — handed over 2026-11-02
 - Core commands: R-11 — handed over 2026-11-02
+- Leases and monitoring, part of R-3 (extend, update/note, leases with
+  --check, inbox, doctor, ls --stale) — handed over 2026-11-02
 
 ## Shipped
 

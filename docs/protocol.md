@@ -118,6 +118,33 @@ number. Collisions are impossible; gaps can happen.
 - Comments never touch `ticket.md`; third parties never write into a
   claimed ticket file.
 
+## Leases and monitoring
+
+- `extend <id> --reason` lengthens the lease of a ticket its owner still
+  holds: `lease_until = now + lease(size)`, `extensions` grows by one,
+  `rev` by one, the reason lands in the log. At most 3 extends per claim
+  (starting value); the reason is required.
+- `note <id> <text>` (and `update <id> --note`) appends a log entry and
+  keeps the claim with its owner. Body editing through the tool comes
+  later.
+- `leases` lists active leases, most urgent first. Status per lease:
+  `ok`, `expiring` (less than 20 percent of the lease left), `expired`
+  (past `lease_until` plus grace). `quiet` is a separate hint: nothing
+  happened to the ticket for more than half its lease. `--expiring` and
+  `--stale` filter (`--stale` shows dead claims); `--check` exits with 20
+  when expired leases exist, for cron jobs and CI. `ls --stale` applies
+  the same dead-claim filter to the ticket list.
+- `inbox <id>` reports what is new since this owner last looked: new log
+  lines and new comments. The marker is local state per store and owner in
+  the tool's data directory (`<workdir>.state/inbox.json`); it is
+  disposable and never part of the repository. The first call only sets
+  the marker. Polling shortens reaction time; fencing at the next write
+  remains the safety net.
+- `doctor` checks the setup: git version (minimum 2.32), owner and git
+  identity, store configuration, remote reachability, a dry-run push
+  (transport and credentials; branch protection is only fully provable on
+  a real write) and a writable data directory. Exit 1 when a check fails.
+
 ## Command output
 
 stdout is data, stderr is messages. With `--json` every command prints one

@@ -15,19 +15,38 @@ import (
 	"github.com/HenrikPuls/dricket/internal/ticket"
 )
 
-// serviceCmds are the stage v0 commands; each maps to one service call.
+// serviceCmds are the stage v0 and v1 commands; each maps to one service call.
 var serviceCmds = []command{
 	{name: "add", synopsis: "create a ticket", run: runAdd},
 	{name: "claim", synopsis: "take a ticket", run: runClaim},
 	{name: "release", synopsis: "push and free a ticket", run: runRelease},
+	{name: "extend", synopsis: "extend the lease of a ticket", run: runExtend},
+	{name: "update", synopsis: "add a progress note, keep the claim", run: runUpdate},
+	{name: "note", synopsis: "add a log entry", run: runNote},
 	{name: "comment", synopsis: "append a comment", run: runComment},
 	{name: "set", synopsis: "change a free field", run: runSet},
 	{name: "ls", synopsis: "list tickets", run: runLs},
+	{name: "leases", synopsis: "show leases and their status", run: runLeases},
+	{name: "inbox", synopsis: "what is new for a ticket", run: runInbox},
 	{name: "show", synopsis: "display a ticket", run: runShow},
 	{name: "lint", synopsis: "check tickets", run: runLint},
+	{name: "doctor", synopsis: "check the local setup", run: runDoctor},
 }
 
 func init() { registry = append(registry, serviceCmds...) }
+
+// identity resolves the owner id and git author identity for this
+// invocation: DK_OWNER overrides the default user@host.
+func (e *env) identity() (profile.Profile, error) {
+	prof, err := profile.Default()
+	if err != nil {
+		return profile.Profile{}, err
+	}
+	if owner := os.Getenv("DK_OWNER"); owner != "" {
+		prof.OwnerID = strings.ToLower(owner)
+	}
+	return prof, nil
+}
 
 // svc opens the ticket store for this invocation: --store or DK_STORE in
 // the form remote[#branch], the owner from DK_OWNER or the default
@@ -48,12 +67,9 @@ func (e *env) svc() (*service.Service, *cliError) {
 	if found && branch == "" {
 		return nil, usageError("store %q: empty branch after '#'", spec)
 	}
-	prof, err := profile.Default()
+	prof, err := e.identity()
 	if err != nil {
 		return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
-	}
-	if owner := os.Getenv("DK_OWNER"); owner != "" {
-		prof.OwnerID = strings.ToLower(owner)
 	}
 	opts.Profile = prof
 	// DK_DATA_DIR overrides where private working copies live (tests and
