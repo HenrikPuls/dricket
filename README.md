@@ -54,7 +54,7 @@ released app-6842 -> review
 | Area | State |
 |---|---|
 | Design and protocol | specified, see [docs/CONCEPT.md](docs/CONCEPT.md) |
-| Concurrency spike (many clones, invariants) | not run yet |
+| Concurrency spike (many clones, invariants) | passed, see [docs/SPIKE.md](docs/SPIKE.md) |
 | CLI v0 (add, claim, release, ls, show, comment, set, lint) | not started |
 | Leases, validation, `next`, `inbox` | planned (v1) |
 | Schema, roles, profiles, force-release | planned (v2) |
