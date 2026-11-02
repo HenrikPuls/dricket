@@ -33,9 +33,10 @@ type Worktree interface {
 
 // WriteSpec is one write through the protocol: Check inspects the fresh
 // head and refuses the write when a precondition fails; Mutate changes the
-// working copy; Paths lists every file the mutation touches.
+// working copy. Everything Mutate writes through the Worktree is staged,
+// so dynamically allocated paths (ids, comment numbers) need no separate
+// declaration.
 type WriteSpec struct {
-	Paths   []string
 	Message string
 	Check   func(Head) error
 	Mutate  func(Worktree) error
@@ -121,21 +122,20 @@ func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 				return werr
 			}
 		}
-		if err := spec.Mutate(s.worktree()); err != nil {
-			werr.Outcome = MutationFailed
-			werr.Err = err
-			return werr
-		}
-		addArgs := []string{"add", "--"}
-		for _, p := range spec.Paths {
-			clean, err := safePath(p)
-			if err != nil {
+		wt := &worktreeAdapter{s: s}
+		if spec.Mutate != nil {
+			if err := spec.Mutate(wt); err != nil {
 				werr.Outcome = MutationFailed
 				werr.Err = err
 				return werr
 			}
-			addArgs = append(addArgs, clean)
 		}
+		if len(wt.written) == 0 {
+			werr.Outcome = PreconditionFailed
+			werr.Err = errors.New("nothing changed")
+			return werr
+		}
+		addArgs := append([]string{"add", "--"}, wt.written...)
 		if _, stderr, err := s.git(ctx, addArgs...); err != nil {
 			werr.Outcome = MutationFailed
 			werr.Err = fmt.Errorf("git add: %s", firstLine(stderr))
@@ -224,10 +224,14 @@ func (h headAdapter) List(prefix string) ([]string, error) {
 
 func (s *Store) head(ctx context.Context) Head { return headAdapter{s, ctx} }
 
-// worktreeAdapter adapts the working copy directory to Worktree.
-type worktreeAdapter struct{ s *Store }
+// worktreeAdapter adapts the working copy directory to Worktree and
+// remembers every file the mutation wrote; exactly those are staged.
+type worktreeAdapter struct {
+	s       *Store
+	written []string
+}
 
-func (w worktreeAdapter) ReadFile(path string) (string, error) {
+func (w *worktreeAdapter) ReadFile(path string) (string, error) {
 	clean, err := safePath(path)
 	if err != nil {
 		return "", err
@@ -239,7 +243,7 @@ func (w worktreeAdapter) ReadFile(path string) (string, error) {
 	return string(b), nil
 }
 
-func (w worktreeAdapter) WriteFile(path string, content string) error {
+func (w *worktreeAdapter) WriteFile(path string, content string) error {
 	clean, err := safePath(path)
 	if err != nil {
 		return err
@@ -248,10 +252,12 @@ func (w worktreeAdapter) WriteFile(path string, content string) error {
 	if err := os.MkdirAll(filepath.Dir(full), 0o750); err != nil {
 		return err
 	}
-	return os.WriteFile(full, []byte(content), 0o600)
+	if err := os.WriteFile(full, []byte(content), 0o600); err != nil {
+		return err
+	}
+	w.written = append(w.written, clean)
+	return nil
 }
-
-func (s *Store) worktree() Worktree { return worktreeAdapter{s} }
 
 // safePath normalises an in-repo path and rejects everything that could
 // escape the working copy. Ticket content is untrusted input; paths built

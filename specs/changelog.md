@@ -11,8 +11,34 @@ top-level CHANGELOG.md and are written at release time from this file.
 - Spike: R-1 — handed over 2026-11-02
 - Foundations: R-2 — handed over 2026-11-02
 - Store: R-10 — handed over 2026-11-02
+- Core commands: R-11 — handed over 2026-11-02
 
 ## Shipped
+
+### R-11 Core commands (2026-11-02)
+Behaviour: `internal/service` implements the stage v0 use cases on top of
+store and ticket model: `add` (id allocation by push retry on the fresh
+head, claimed or `--unclaimed`, labels/depends/parent), `claim` (sizes
+S/M/L with the concept's starting leases, idempotent re-claim, takeover
+after lease plus grace with a log line), `release` (stage target, result
+into the Result section, idempotent on free tickets), `comment`
+(add-only numbered files, allocation by push retry), `set` (free fields
+only, `--if-version` conflict check, state fields rejected), `ls`
+(stage/owner/@me/prefix filters, warnings for unknown keys), `show`
+(raw ticket), `lint` (parse + model findings, exit 14 on errors). Service
+errors map to the documented exit codes; epoch never resets after release
+(fencing token). CLI wiring for all eight commands with the JSON envelope;
+`DK_STORE`, `DK_OWNER`, `DK_DATA_DIR` environment. Working-copy directory
+names gained an fnv hash suffix after a real collision between long temp
+paths; WriteSpec lost its Paths field (staging tracks what the mutation
+wrote) after a real by-value bug left `git add` without paths.
+docs/protocol.md specifies the on-disk format and the write protocol
+independently of the Go code.
+Tests: service integration against local bare repos (lifecycle with id
+potent claim/release, sequential ids, exit codes 11/12/14/10, claim race
+with one winner, concurrent comments with distinct files, takeover after
+lease expiry with fenced previous owner, filters); CLI end-to-end via
+DK_STORE (happy path, JSON envelopes, exit-code table, help).
 
 ### R-10 Store (2026-11-02)
 Behaviour: `internal/store` owns a private working copy per profile outside

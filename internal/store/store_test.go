@@ -72,7 +72,6 @@ func openStore(t *testing.T, remote, owner string, tune func(*Options)) *Store {
 
 func writeFileSpec(path, content string, check func(Head) error) WriteSpec {
 	return WriteSpec{
-		Paths:   []string{path},
 		Message: "test: write " + path,
 		Check:   check,
 		Mutate: func(w Worktree) error {
@@ -180,7 +179,6 @@ func TestPreconditionFailureLeavesRemoteUntouched(t *testing.T) {
 	s := openStore(t, bare, "alice", nil)
 
 	spec := WriteSpec{
-		Paths:   []string{"tickets/a.txt"},
 		Message: "must not land",
 		Check: func(Head) error {
 			return errors.New("claimed by someone else")
@@ -211,7 +209,6 @@ func TestNonFastForwardRetriesAndSucceeds(t *testing.T) {
 	// Alice's precondition lets Bob win the race once: his push makes her
 	// push a non-fast-forward, and she must succeed on the retry.
 	spec := WriteSpec{
-		Paths:   []string{"tickets/alice.txt"},
 		Message: "alice after race",
 		Check: func(h Head) error {
 			if has, err := h.Has("tickets/bob.txt"); err != nil {
@@ -264,7 +261,6 @@ func TestConcurrentClaimsKeepOneOwner(t *testing.T) {
 			defer wg.Done()
 			owner := fmt.Sprintf("runner-%d", i)
 			spec := WriteSpec{
-				Paths:   []string{path},
 				Message: "claim " + owner,
 				Check: func(h Head) error {
 					if has, err := h.Has(path); err != nil {
@@ -362,7 +358,6 @@ func TestUnsafePathsAreRejected(t *testing.T) {
 	s := openStore(t, bare, "alice", nil)
 	for _, p := range []string{"../escape.txt", "/abs.txt", "a/../../b", "", "bad\x00name", "c:d.txt"} {
 		spec := WriteSpec{
-			Paths:   []string{p},
 			Message: "escape",
 			Mutate: func(w Worktree) error {
 				return w.WriteFile(p, "x")

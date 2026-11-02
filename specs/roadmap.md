@@ -10,7 +10,7 @@ the items below; milestone numbers are not used.
 Nothing. Stage v0 is next; items below in working order.
 
 ## Next
-- R-11 Core commands (stage v0, batch 3 of 3) — `internal/service` + CLI: add, claim, release, ls, show, comment, set, lint; prefix IDs allocated by push retry, stable paths, parent/depends, epoch/rev; docs/protocol.md.
+Stage v1 and v2 (stage v0 is shipped, see specs/changelog.md):
 - R-3 Leases and checks (stage v1) — sizes, extend, leases, validate, next, search, inbox, epoch trailers, `dk doctor`.
 - R-4 Protection and roles (stage v2) — declarative schema in dricket.toml, path rules, role transitions, force-release, guide/init/setup-agent, profiles, quotas, secret scan.
 - R-5 First release — checksums, build provenance, README with a recorded session.
