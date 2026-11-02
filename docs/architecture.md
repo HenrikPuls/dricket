@@ -28,6 +28,9 @@ maintainers of the ticket repository.
 - `git` must be installed; it is called as a subprocess (ADR-0002).
 - GPL-3.0-or-later; dependencies must be GPLv3-compatible (ADR-0003).
 - Ticket content is untrusted input.
+- Development happens on Windows and Linux; the CI matrix (ubuntu, macOS)
+  is what proves the supported platforms. Windows binaries ship without a
+  behaviour guarantee.
 - Writes need the network. Offline writing is out of scope.
 
 ## 3. Context and scope
@@ -114,6 +117,15 @@ install it next to `git`. The ticket repository is an ordinary repository on
 any Git host with branch protection. The landing page is served by GitHub Pages
 from `site/`.
 
+CI (GitHub Actions) runs on every push and pull request: build, vet,
+golangci-lint, tests with the race detector including the multi-process
+concurrency tests, a fuzz smoke test, govulncheck, a licence check
+(GPLv3-compatible dependencies only) and the docs consistency check. CodeQL
+scans the Go code weekly. Releases are tags built by GoReleaser for linux,
+macOS and Windows on amd64 and arm64, with SHA-256 checksums and a build
+provenance attestation. Action versions get pinned by commit SHA before the
+first release; Dependabot keeps the pins current.
+
 ## 8. Cross-cutting concepts
 
 - **Errors:** every failure maps to a documented exit code (see CONCEPT.md).
@@ -124,8 +136,11 @@ from `site/`.
   detected by `validate`, not prevented.
 - **Persistence:** only Git. The private working copy is disposable.
 - **Logging:** stderr messages only; no telemetry; no user content in logs.
-- **Testing:** unit tests; multi-process concurrency tests against a local
-  bare repo with invariants at zero; a fuzz test for the parser.
+- **Testing:** unit tests for the parser, lint, validate and state
+  transitions; exit-code and JSON contract tests; multi-process concurrency
+  tests against a local bare repo with invariants at zero; a fuzz test for
+  the front-matter parser. The throwaway spike harness lives under `spike/`
+  only and is not part of the product.
 
 ## 9. Architecture decisions
 Index only; details in `docs/adr/`.
@@ -150,7 +165,8 @@ Index only; details in `docs/adr/`.
 | Risk | Owner | Trigger to revisit |
 |---|---|---|
 | Git contention under real load | maintainer | R-1 shows unacceptable rejects |
-| No merge gate for epoch trailers | maintainer | host chosen |
+| No merge gate for epoch trailers | maintainer | first code-repo host chosen |
+| Path-level push rules unavailable on a GitHub free plan | path rules are detected by `validate`, not prevented | first real ticket store on a free-plan host |
 | Credentials for non-developer frontend users | maintainer | first frontend integration |
 | GPL bundling inside a proprietary app | maintainer | before any bundling |
 
