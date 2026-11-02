@@ -46,14 +46,19 @@ var (
 // Options configures a Store. Zero values get the concept's starting
 // values.
 type Options struct {
-	Remote       string // remote URL or path
-	Branch       string // ticket branch; empty means "tickets"
-	DataDir      string // parent for the private working copy; empty = user cache dir
-	Profile      profile.Profile
-	MaxAttempts  int
-	BackoffBase  time.Duration
-	BackoffCap   time.Duration
-	TotalTimeout time.Duration
+	Remote  string // remote URL or path
+	Branch  string // ticket branch; empty means "tickets"
+	DataDir string // parent for the private working copy; empty = user cache dir
+	Profile profile.Profile
+	// IsolateGitConfig replaces the user's global git configuration with
+	// an empty file for every call, so nothing leaks in from the
+	// surrounding setup. Set for runner profiles with their own
+	// credentials (docs/CONCEPT.md, "Accounts per agent").
+	IsolateGitConfig bool
+	MaxAttempts      int
+	BackoffBase      time.Duration
+	BackoffCap       time.Duration
+	TotalTimeout     time.Duration
 }
 
 func (o *Options) branch() string {
@@ -81,12 +86,13 @@ func (o *Options) fillDefaults() {
 // Store is a private working copy plus the git access around it. It is not
 // safe for concurrent use; processes and profiles each get their own.
 type Store struct {
-	opts    Options
-	dir     string
-	sleep   func(time.Duration)
-	hasRef  bool // remote branch existed at the last fetch
-	rand    *rand.Rand
-	rngOnce sync.Once
+	opts            Options
+	dir             string
+	gitConfigGlobal string // empty = ambient user configuration applies
+	sleep           func(time.Duration)
+	hasRef          bool // remote branch existed at the last fetch
+	rand            *rand.Rand
+	rngOnce         sync.Once
 }
 
 // Open prepares the private working copy for one profile against one
@@ -116,6 +122,16 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 	}
 
 	s := &Store{opts: opts, dir: dir, sleep: time.Sleep}
+	if opts.IsolateGitConfig {
+		// An empty file replaces the user's global git configuration;
+		// the profile's own identity comes from its env (ADR: profiles
+		// share nothing with the surrounding setup).
+		iso := filepath.Join(opts.DataDir, filepath.Base(dir)+".gitconfig")
+		if err := os.WriteFile(iso, nil, 0o600); err != nil {
+			return nil, fmt.Errorf("store: git config isolation: %w", err)
+		}
+		s.gitConfigGlobal = iso
+	}
 	if err := s.initOnce(ctx); err != nil {
 		return nil, err
 	}
@@ -157,7 +173,7 @@ func (s *Store) initOnce(ctx context.Context) error {
 func (s *Store) git(ctx context.Context, args ...string) (string, string, error) {
 	full := append([]string{"-C", s.dir, "-c", "core.autocrlf=false"}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...) // #nosec G204 -- args are tool-built constants and validated paths (ADR-0002)
-	cmd.Env = append(os.Environ(), s.opts.Profile.Env()...)
+	cmd.Env = append(os.Environ(), s.opts.Profile.Env(s.gitConfigGlobal)...)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb

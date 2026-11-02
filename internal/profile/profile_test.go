@@ -2,6 +2,8 @@
 package profile
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -37,7 +39,7 @@ func TestValidateRequiresEverything(t *testing.T) {
 
 func TestEnvCarriesIdentity(t *testing.T) {
 	p := Profile{Name: "n", OwnerID: "orch-1.sub-2", GitName: "Orch One", GitEmail: "orch@x"}
-	env := p.Env()
+	env := p.Env("")
 	joined := strings.Join(env, "\n")
 	for _, want := range []string{
 		"GIT_AUTHOR_NAME=Orch One",
@@ -48,5 +50,69 @@ func TestEnvCarriesIdentity(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Errorf("env missing %q in %v", want, env)
 		}
+	}
+	if strings.Contains(joined, "GIT_SSH_COMMAND") || strings.Contains(joined, "GIT_CONFIG_GLOBAL") {
+		t.Errorf("plain profile must not set ssh or isolation: %v", env)
+	}
+}
+
+func TestEnvSSHKeyAndIsolation(t *testing.T) {
+	p := Profile{Name: "runner", OwnerID: "orch-1.sub-2", GitName: "r", GitEmail: "r@x",
+		SSHKey: `C:/keys/id_ed25519`}
+	env := p.Env("C:/data/empty.gitconfig")
+	joined := strings.Join(env, "\n")
+	if !strings.Contains(joined, `GIT_SSH_COMMAND=ssh -i C:/keys/id_ed25519 -o IdentitiesOnly=yes`) {
+		t.Errorf("env missing ssh command: %v", env)
+	}
+	if !strings.Contains(joined, "GIT_CONFIG_GLOBAL=C:/data/empty.gitconfig") {
+		t.Errorf("env missing isolation: %v", env)
+	}
+}
+
+func TestResolveFromUserConfig(t *testing.T) {
+	// DK_CONFIG pins the config file (os.UserConfigDir differs per
+	// platform and is not env-overridable on macOS).
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	t.Setenv("DK_CONFIG", cfgPath)
+
+	if _, err := Resolve("orch-1"); err == nil {
+		t.Fatal("missing config file must be an error for an explicit name")
+	}
+
+	cfg := `
+[profile.orch-1]
+owner = "orch-1.sub-2"
+git_name = "Orch One"
+git_email = "orch-1@invalid"
+ssh_key = "/keys/orch.key"
+
+[profile.default]
+owner = "henrik"
+git_name = "Henrik"
+git_email = "henrik@invalid"
+`
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	p, err := Resolve("orch-1")
+	if err != nil {
+		t.Fatalf("resolve orch-1: %v", err)
+	}
+	if p.OwnerID != "orch-1.sub-2" || p.GitEmail != "orch-1@invalid" || p.SSHKey != "/keys/orch.key" {
+		t.Errorf("resolved = %+v", p)
+	}
+	if err := p.Validate(); err != nil {
+		t.Errorf("validate: %v", err)
+	}
+
+	// The default entry wins over the OS identity when present.
+	if p, err := Resolve(""); err != nil || p.OwnerID != "henrik" {
+		t.Errorf("default resolve = %+v, %v", p, err)
+	}
+
+	// A typo in the profile name must not fall back silently.
+	if _, err := Resolve("orch_1"); err == nil {
+		t.Error("unknown profile name must be an error")
 	}
 }

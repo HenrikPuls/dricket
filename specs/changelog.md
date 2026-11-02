@@ -21,6 +21,10 @@ top-level CHANGELOG.md and are written at release time from this file.
   with admins fail-closed, ticket quota, secret scan before writes and
   in validate; prefix-register warnings; `dk guide`) — handed over
   2026-11-02
+- Store setup and profiles of R-4 (`dk init` like git init: local
+  directory with main checked out and seeded ticket branch, or remote
+  URL; `dk setup-agent`; user-config profiles with ssh_key and git
+  config isolation; doctor shows the profile) — handed over 2026-11-02
 
 ## Shipped
 

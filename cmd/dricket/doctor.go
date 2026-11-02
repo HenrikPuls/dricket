@@ -43,11 +43,12 @@ func runDoctor(e *env, args []string) (any, *cliError) {
 		add("git", true, "%s (minimum %d.%d)", full, gitMinMajor, gitMinMinor)
 	}
 
-	// Identity: owner id and git author identity.
+	// Identity: profile, owner id and git author identity.
 	if prof, err := e.identity(); err != nil {
 		add("identity", false, "%v", err)
 	} else {
-		add("identity", true, "owner %s, git %s <%s>", prof.OwnerID, prof.GitName, prof.GitEmail)
+		add("identity", true, "profile %s: owner %s, git %s <%s>",
+			prof.Name, prof.OwnerID, prof.GitName, prof.GitEmail)
 	}
 
 	// Store configuration.

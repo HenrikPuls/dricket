@@ -153,6 +153,43 @@ extend, and `validate` then reports `lease-too-long`.
 model and changes only with an ADR. See ADR-0004 for the decisions
 behind this file and the TOML library.
 
+## Store setup and profiles
+
+- `dk init [dir-or-url]` sets up a store the way `git init` sets up a
+  repository: in a directory it creates a repository with the scaffold
+  committed on `main` (checked out, so dricket.toml is directly
+  editable) and an empty seed commit on the ticket branch; a remote URL
+  gets both branches pushed. Existing repositories and existing branches
+  are refused — the scaffold never overwrites anything. The tool then
+  works with `--store <dir>#<ticket-branch>`. The scaffold carries
+  dricket.toml with the defaults, prefixes.toml, README.md, AGENTS.md,
+  CLAUDE.md and a `.gitattributes` that normalizes line endings.
+- `dk setup-agent` writes one pointer line into the AGENTS.md of the
+  current code repository: which store holds the tickets, and that
+  `dk guide` carries the rules. Idempotent; creates AGENTS.md when it is
+  missing.
+- **Profiles** bundle one actor's identity in the user config
+  (`<user config dir>/dricket/config.toml`, outside any repository):
+
+  ```toml
+  [profile.orch-1]
+  owner = "orch-1.sub-2"
+  git_name = "Orch One"
+  git_email = "orch-1@invalid"
+  ssh_key = "C:/keys/orch_ed25519"   # optional
+  ```
+
+  `--profile <name>` or `DK_PROFILE` selects the entry; without one, the
+  `[profile.default]` entry or the operating system identity (user@host)
+  applies. `DK_OWNER` still overrides the owner id. A profile with an
+  `ssh_key` pushes through `GIT_SSH_COMMAND` (with `IdentitiesOnly`) and
+  is isolated from the user's global git configuration through
+  `GIT_CONFIG_GLOBAL`, so nothing leaks in from the surrounding setup;
+  plain profiles keep the ambient configuration and credentials. An
+  unknown profile name is an error, never a silent fallback. Profiles
+  are organisation, not security: agents in the same OS user context can
+  read each other's key files (docs/CONCEPT.md, "Limit").
+
 ## Claims
 
 - `claim` sets `owner`, `kind`, `size`, `claimed_at`, `lease_until`,
@@ -309,3 +346,5 @@ All three guards are configured in dricket.toml (see Configuration).
 - `DK_DATA_DIR`: where private working copies live (default: the user
   cache directory).
 - `DK_PROFILE`: profile selection (with stage v2 profiles).
+- `DK_CONFIG`: path of the user config file with the profiles (default:
+  `<user config dir>/dricket/config.toml`).
