@@ -40,20 +40,20 @@ This is the verified whole-ticket workflow. Timestamps and commit IDs are
 shortened. Inside the ticket store, discovery needs no flags or environment.
 
 ```console
-$ dk add --prefix app -c "Login error on empty password" -l bug --unclaimed
+$ dk add --prefix app -m "Login error on empty password" -l bug --unclaimed
 app-1
 $ dk next --claim --size M
 claimed app-1 (epoch 1, lease until …)
 $ dk sync
 synced tickets
 $ $EDITOR tickets/app/0000/app-1/ticket.md
-$ dk comment app-1 "please check the empty-password case"
+$ dk comment app-1 -m "please check the empty-password case"
 tickets/app/0000/app-1/comments/…-henrik.md
 $ dk inbox app-1
 comment … henrik: please check the empty-password case
 $ dk commit app-1
 committed app-1 (rev 2, commit …)
-$ dk release --stage review --result "Fix on dk/app-1" app-1
+$ dk release --stage review -m "Fix on dk/app-1" app-1
 released app-1 -> review
 $ dk validate
 validate ok
@@ -104,11 +104,14 @@ checkout:
 ```console
 dk init tickets-store app
 cd tickets-store
-dk add -c "First ticket"
+dk add -m "First ticket"
 ```
 
 No store flag or binding is needed inside that repository. Configuration stays
 on `main`; discovery reads it from Git while `tickets` is checked out.
+
+Use `dk --help` for the grouped command overview and `dk help <command>` or
+`dk <command> --help` for its exact options.
 
 ## How it works
 

@@ -158,7 +158,7 @@ func parseFlags(fs *flag.FlagSet, args []string) *cliError {
 			return usageError("%s: %s requires a value (see --help)", fs.Name(), a)
 		}
 		i++
-		options = append(options, args[i])
+		options = append(options, args[i]) // #nosec G602 -- the bounds check immediately above covers i+1
 	}
 	ordered := append(options, "--")
 	ordered = append(ordered, positional...)

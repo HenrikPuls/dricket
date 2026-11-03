@@ -179,7 +179,7 @@ Collisions are impossible. Two publications with the same path cannot both be fa
 
 **Releasing.**
 
-- `release` by the owner, optionally with `--stage` and `--result`.
+- `release` by the owner, optionally with `--stage` and `-m/--message`.
 - `force-release` by an admin, with a mandatory reason. The permission comes from the config on `main`.
 - The wrapper cleans up with a trap on signals and releases.
 
@@ -307,12 +307,11 @@ precedence: flags over environment over project over user.
 | `sync` | refresh and fast-forward a clean ticket checkout |
 | `restore <path>` | discard local changes to one path without fetching |
 | `commit <id>` | validate and publish one edited, claimed ticket |
-| `update <id>` | add a progress note, keep the claim (`--note`) |
-| `release <id>` | publish and release (`--stage`, `--result`) |
-| `extend <id>` | extend the lease, reason required |
+| `note <id> -m <text>` | add a progress note, keep the claim |
+| `release <id>` | publish and release (`--stage`, `-m/--message`) |
+| `extend <id> -m <reason>` | extend the lease, reason required |
 | `set <id> key=value` | targeted field mutation (`--if-version`) |
-| `comment <id>` | append a separate add-only comment |
-| `note <id>` | add a log entry |
+| `comment <id> -m <text>` | append a separate add-only comment |
 | `show <id>` | display a ticket |
 | `ls` | list and filter tickets |
 | `next` | next suitable ticket (`--claim`) |
@@ -324,8 +323,10 @@ precedence: flags over environment over project over user.
 | `force-release` | admin release with a reason |
 | `inbox <id>` | new comments and claim changes since last seen |
 
-**Global flags.** `--json`, `-q`, `--no-color`, `-y`, `-n` (`--dry-run`),
-`--store`, `--profile`.
+**Global flags.** `--json`, `--store`, `--profile`, `--version` and `-h/--help`.
+Options may appear before or after positional arguments. `dk --help` groups
+commands by task; `dk help <command>` and `dk <command> --help` show actual
+command options without opening a store.
 
 **Resolving the store and project.** Commands inside the ticket repository
 work without arguments: discovery walks up like git until it finds the store
@@ -337,13 +338,13 @@ checkout origin and branch match the selected store.
 **Examples.**
 
 ```console
-dk add --prefix app -c "Login error on empty password" -d - -l bug <description.md
+dk add --prefix app -m "Login error on empty password" -d - -l bug <description.md
 dk next --claim --size M
 dk sync
 $EDITOR tickets/app/0006/app-6842/ticket.md
 dk inbox app-6842
 dk commit app-6842
-dk release app-6842 --stage review --result "Fix on dk/app-6842"
+dk release app-6842 --stage review -m "Fix on dk/app-6842"
 ```
 
 **Search.** `ls` filters by field; `search` delegates fixed-string full-text
@@ -437,7 +438,7 @@ A profile in the user config (for example `~/.config/dricket/config.toml`, outsi
 5. The agent works and can edit the whole ticket Markdown file. Code commits carry `Dricket-Ticket`, `Dricket-Epoch`, `Dricket-Op`, `Dricket-Actor`.
 6. Between steps and before release, `dk inbox <id>` reports new comments without interrupting work.
 7. `dk commit <id>` validates and publishes ticket edits. The wrapper separately pushes the code branch.
-8. `dk release <id> --stage review --result "..."`, then clean up the code worktree.
+8. `dk release <id> --stage review -m "..."`, then clean up the code worktree.
 
 **Crash and abort.** A trap in the wrapper catches `SIGINT` and `SIGTERM` and runs `release`. On `SIGKILL` or power loss the lease runs out and someone else takes over (after grace).
 
@@ -524,11 +525,11 @@ Last activity comes from the commit time of the latest change to the ticket. ⚠
 
 | Situation | Action |
 | --- | --- |
-| Dead claims | `dk leases --stale`, then `dk force-release <id> --reason "..."` |
+| Dead claims | `dk leases --stale`, then `dk force-release <id> -m "..."` |
 | Definite push error (exit 15) | check rights, token, branch protection, network and host status |
 | `outcome-unknown` (exit 15) | reconcile the recorded commit; never blindly repeat the mutation |
 | Invalid direct edit | run `dk validate`, then correct through an editor and `dk commit` |
-| Same-ticket conflict (exit 12) | preserve local work, inspect the remote change, restore or manually reconcile |
+| Ticket or checkout conflict (exit 12) | preserve local work, inspect the change, restore or manually reconcile |
 | Changing a prefix | don't; create a new prefix and continue tickets there |
 | Git host outage | writing pauses; leases do not extend meanwhile, mind the grace; after recovery check `leases --stale` |
 | Secret in a ticket | rotate immediately; cleaning history is laborious and not reliable |

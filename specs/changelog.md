@@ -6,6 +6,13 @@ top-level CHANGELOG.md and are written at release time from this file.
 
 ## Awaiting verification
 
+- R-15 Git-like CLI and structured help: options work before or after positional
+  arguments; existing text/reason inputs use `-m/--message`; redundant `update`
+  and dead global flags are removed; root help is grouped and every command has
+  store-independent help generated from its actual flag set. Tests: parser
+  placement/booleans/terminator/errors, new and removed spellings, all command
+  help topics, full CLI/service suites, real help and local workflow — handed
+  over 2026-11-03.
 - R-14 Single-repository local operation (ADR-0010): init checks out the ticket
   branch; discovery reads committed main config at the actual Git root;
   non-bare local stores use a private linked worktree, immutable base snapshots

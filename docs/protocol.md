@@ -295,13 +295,13 @@ without any of them `add` fails with a hint (ADR-0008).
 
 ## Leases and monitoring
 
-- `extend <id> --reason` lengthens the lease of a ticket its owner still
+- `extend <id> -m <reason>` lengthens the lease of a ticket its owner still
   holds: `lease_until = now + lease(size)`, `extensions` grows by one,
   `rev` by one, the reason lands in the log. At most 3 extends per claim
   (starting value); the reason is required.
-- `note <id> <text>` (and `update <id> --note`) appends a log entry and
-  keeps the claim with its owner. Whole-ticket content editing uses the
-  claim → sync → editor → commit workflow.
+- `note <id> -m <text>` appends a log entry and keeps the claim with its owner.
+  Whole-ticket content editing uses the claim → sync → editor → commit
+  workflow.
 - `leases` lists active leases, most urgent first. Status per lease:
   `ok`, `expiring` (less than 20 percent of the lease left), `expired`
   (past `lease_until` plus grace). `quiet` is a separate hint: nothing
@@ -408,7 +408,7 @@ All three guards are configured in dricket.toml (see Configuration).
   a guarantee — rotate credentials that land in a ticket regardless.
   `validate` scans every ticket and comment file, so anything pushed
   around the tool is still detected.
-- **force-release.** `dk force-release <id> --reason "..."` frees a
+- **force-release.** `dk force-release <id> -m "..."` frees a
   ticket without the owner's consent — the runbook answer to dead
   claims. Only owners in `security.admins` may call it; an empty list
   means nobody (fail closed). The reason is mandatory and lands in the
