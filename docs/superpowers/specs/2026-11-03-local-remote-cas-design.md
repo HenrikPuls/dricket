@@ -82,14 +82,22 @@ lookup such as `git show refs/heads/main:dricket.toml`; no file is materialized
 in the ticket checkout. A malformed config still defaults only during
 discovery and fails when loaded for an operation, as today.
 
-The ticket branch comes from that config, defaulting to `tickets`. Discovery
-continues to prefer the `origin` URL when one exists. Therefore adding an
-origin deliberately moves a discovered store from local CAS to remote push
-CAS. An explicit filesystem `--store`/`DK_STORE` binding selects local CAS for
-that repository; a URL selects remote CAS.
+The committed `dricket.toml` on `main` is authoritative whenever that blob
+exists; the current-checkout file is only a compatibility fallback when `main`
+has no config. Thus a dirty working-tree edit or a file on the ticket branch
+cannot override the protected branch selection. The ticket branch defaults to
+`tickets`.
 
-Configuration reads for a local filesystem store come directly from its local
-`main` ref. Remote stores retain the existing fetch into
+Discovery continues to prefer the `origin` URL when one exists. Therefore
+adding an origin deliberately moves a discovered store from local CAS to
+remote push CAS. An explicit filesystem `--store`/`DK_STORE` binding selects
+local CAS only when its target is a non-bare working repository. Filesystem
+paths and `file://` URLs naming bare repositories retain fetch/push CAS, which
+keeps existing bare-local fixtures, workflows and integrations unchanged. Any
+URL other than an explicit non-bare filesystem store selects remote CAS.
+
+Configuration reads for a local non-bare filesystem store come directly from
+its local `main` ref. Remote and bare stores retain the existing fetch into
 `refs/dricket/config`.
 
 ## Initialization
@@ -151,8 +159,9 @@ created. Git also updates the index and working tree so that HEAD cannot move
 while leaving an otherwise clean checkout stale.
 
 Local changes that would be overwritten make publication fail without
-discarding them. This is a local checkout conflict, not a concurrent-ref race,
-and must not be retried until the retry budget expires. Non-conflicting dirty
+discarding them. The command reports error kind `conflict` with existing exit
+12. This is a local checkout conflict, not a concurrent-ref race, and must not
+be retried until the retry budget expires. Non-conflicting dirty
 paths, including an edited `ticket.md` during an add-only comment write, must
 survive and the comment must become visible.
 
