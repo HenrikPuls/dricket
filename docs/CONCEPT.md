@@ -309,7 +309,14 @@ The role comes from `kind` (`agent` or `human`). ⚠️ `kind` is stored in the 
 
 **Global flags.** `--json`, `-q`, `--no-color`, `-y`, `-n` (`--dry-run`), `--store`.
 
-**Resolving the project.** In this order: full ID, `-p`, `DK_PROJECT`, mapping from the code repo's Git remote to a prefix, `dk use`. If none works the tool fails with an error instead of guessing.
+**Resolving the store and project.** Commands inside the ticket
+repository work without arguments: the tool walks up like git until it
+finds the store root (a git working tree with `dricket.toml`) and takes
+remote, branch and the single registered prefix from there. In code
+repositories a `.dricket` file written by `dk use` binds the store and
+prefix. The project prefix resolves in this order: full ID, `--prefix`,
+`DK_PROJECT`, `.dricket`, the single registered prefix. If none works
+the tool fails with an error instead of guessing (ADR-0008).
 
 **Examples.**
 

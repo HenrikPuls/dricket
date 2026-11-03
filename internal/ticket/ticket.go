@@ -136,6 +136,15 @@ func ValidID(s string) bool {
 	return idPattern.MatchString(s)
 }
 
+// prefixPattern is the prefix part of an id: lower case, starts with a
+// letter, dashes allowed between segments.
+var prefixPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+
+// ValidPrefix reports whether s is a well-formed project prefix.
+func ValidPrefix(s string) bool {
+	return prefixPattern.MatchString(s)
+}
+
 // Ticket is the typed view of one ticket file.
 type Ticket struct {
 	ID            string

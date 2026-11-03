@@ -10,20 +10,31 @@ import (
 	"strings"
 
 	"github.com/HenrikPuls/dricket/internal/store"
+	"github.com/HenrikPuls/dricket/internal/ticket"
 )
 
 // --------------------------------------------------------------- init --
 
 // scaffoldFiles is what `dk init` writes onto the protected main branch.
 // The defaults are the concept's starting values; admins tune them by
-// pull request.
-func scaffoldFiles() map[string]string {
+// pull request. The branch key feeds store discovery; an initial prefix
+// makes `add` work without --prefix.
+func scaffoldFiles(branch, prefix string) map[string]string {
+	prefixesToml := `# The prefix register: prefixes that belong to this store. Admins add
+# entries; prefixes are never renamed (docs/CONCEPT.md, "Prefix register").
+`
+	if prefix != "" {
+		prefixesToml += fmt.Sprintf("prefixes = [%q]\n", prefix)
+	} else {
+		prefixesToml += "prefixes = []\n"
+	}
 	return map[string]string{
-		"dricket.toml": `# dricket.toml - the protected configuration of this ticket store.
+		"dricket.toml": fmt.Sprintf(`# dricket.toml - the protected configuration of this ticket store.
 # Changes go through pull requests on this branch (main), never through dk.
 # See docs/CONCEPT.md ("Declarative schema") and ADR-0004.
 
 schema_version = 1
+branch = %[1]q                  # the ticket branch of this store (discovery)
 # min_version = "0.2.0"      # refuse older tools with exit 16
 
 [limits]
@@ -49,11 +60,8 @@ in-progress = ["review", "blocked", "needs-input", "open"]
 blocked = ["in-progress", "open"]
 needs-input = ["in-progress", "open"]
 review = ["in-progress"]
-`,
-		"prefixes.toml": `# The prefix register: prefixes that belong to this store. Admins add
-# entries; prefixes are never renamed (docs/CONCEPT.md, "Prefix register").
-prefixes = []
-`,
+`, branch),
+		"prefixes.toml": prefixesToml,
 		".gitattributes": `# Ticket files are plain text and compared byte by byte; normalize
 # line endings so the same file hashes on every platform.
 * text=auto eol=lf
@@ -92,19 +100,26 @@ func runInit(e *env, args []string) (any, *cliError) {
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
-	if fs.NArg() > 1 {
-		return nil, usageError("init: at most one directory or URL expected")
+	if fs.NArg() > 2 {
+		return nil, usageError("init: at most one directory or URL and one prefix expected")
 	}
 	target := "."
-	if fs.NArg() == 1 {
+	prefix := ""
+	if fs.NArg() >= 1 {
 		target = fs.Arg(0)
+	}
+	if fs.NArg() == 2 {
+		prefix = strings.ToLower(strings.TrimSpace(fs.Arg(1)))
+		if !ticket.ValidPrefix(prefix) {
+			return nil, usageError("init: %q is not a valid prefix (lower case letters, digits, dashes)", fs.Arg(1))
+		}
 	}
 	prof, err := e.identity()
 	if err != nil {
 		return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 	}
 	opts := store.Options{Remote: target, Branch: *branch, Profile: prof}
-	if err := store.Init(context.Background(), opts, scaffoldFiles()); err != nil {
+	if err := store.Init(context.Background(), opts, scaffoldFiles(*branch, prefix)); err != nil {
 		return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 	}
 	if !e.json {
@@ -113,28 +128,32 @@ func runInit(e *env, args []string) (any, *cliError) {
 		} else {
 			abs, _ := filepath.Abs(target)
 			e.outf("initialized ticket store in %s\n", abs)
-			e.outf("  main:        checked out, holds dricket.toml (edit by pull request)\n")
-			e.outf("  %s:  seeded; point the tool at it:\n", *branch)
-			e.outf("  dk --store %s#%s add -c \"First ticket\"\n", abs, *branch)
+			if prefix != "" {
+				e.outf("  registered prefix: %s\n", prefix)
+			}
+			e.outf("  work inside the store: dk add -c \"First ticket\"\n")
+			e.outf("  bind it from a code repo: dk use --store %s#%s && dk use %s\n", abs, *branch, prefix)
 		}
 	}
-	return map[string]any{"remote": target, "branch": *branch}, nil
+	return map[string]any{"remote": target, "branch": *branch, "prefix": prefix}, nil
 }
 
 // ---------------------------------------------------------- setup-agent --
 
 // runSetupAgent writes one pointer line into the AGENTS.md of the current
 // code repository, so agents find the store without duplicated rules.
+// The store resolves like everywhere else: --store, DK_STORE, bindings
+// or discovery from a parent directory.
 func runSetupAgent(e *env, args []string) (any, *cliError) {
 	if len(args) != 0 {
 		return nil, usageError("setup-agent: no arguments expected")
 	}
-	spec := e.store
-	if spec == "" {
-		spec = os.Getenv("DK_STORE")
+	spec, _, cerr := e.storeResolution(context.Background())
+	if cerr != nil {
+		return nil, cerr
 	}
 	if spec == "" {
-		return nil, usageError("setup-agent: no store configured; use --store <remote>[#branch] or DK_STORE")
+		return nil, usageError("setup-agent: " + noStoreHint)
 	}
 	remote, branch, _ := strings.Cut(spec, "#")
 	if branch == "" {

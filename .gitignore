@@ -16,3 +16,6 @@ coverage.*
 
 # Spike build artifact
 /spike/spike.exe
+
+# local test binaries
+*.exe

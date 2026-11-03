@@ -41,6 +41,7 @@ var serviceCmds = []command{
 var rootCmds = []command{
 	{name: "version", synopsis: "print the tool version", run: runVersion},
 	{name: "init", synopsis: "set up a ticket store in a directory or at a URL", run: runInit},
+	{name: "use", synopsis: "bind store and project prefix for this directory", run: runUse},
 	{name: "setup-agent", synopsis: "point AGENTS.md at this store", run: runSetupAgent},
 	{name: "guide", synopsis: "print the agent guide", run: runGuide},
 }
@@ -68,19 +69,20 @@ func (e *env) identity() (profile.Profile, error) {
 	return prof, nil
 }
 
-// svc opens the ticket store for this invocation: --store or DK_STORE in
-// the form remote[#branch], the owner from DK_OWNER or the default
-// user@host identity.
+// svc opens the ticket store for this invocation. The store spec comes
+// from --store or DK_STORE, or - git-like - from walking up the current
+// directory: the first store root (git repo with dricket.toml) or the
+// nearest `.dricket` binding is used.
 func (e *env) svc() (*service.Service, *cliError) {
 	if e.svcCache != nil {
 		return e.svcCache, nil
 	}
-	spec := e.store
-	if spec == "" {
-		spec = os.Getenv("DK_STORE")
+	spec, _, cerr := e.storeResolution(context.Background())
+	if cerr != nil {
+		return nil, cerr
 	}
 	if spec == "" {
-		return nil, usageError("no ticket store configured; use --store <remote>[#branch] or DK_STORE")
+		return nil, usageError(noStoreHint)
 	}
 	remote, branch, found := strings.Cut(spec, "#")
 	opts := store.Options{Remote: remote, Branch: branch}
@@ -172,8 +174,8 @@ func runAdd(e *env, args []string) (any, *cliError) {
 	fromFile := fs.String("F", "", "read the description from a file")
 	labels := fs.String("l", "", "comma-separated labels")
 	depends := fs.String("depends", "", "comma-separated ticket ids")
-	parent := fs.String("p", "", "parent ticket id")
-	prefix := fs.String("prefix", "", "project prefix (required in stage v0)")
+	parent := fs.String("parent", "", "parent ticket id")
+	prefix := fs.String("prefix", "", "project prefix (default: DK_PROJECT, bindings, or the store's only registered prefix)")
 	unclaimed := fs.Bool("unclaimed", false, "create the ticket without claiming it")
 	size := fs.String("size", "M", "claim size S, M or L")
 	kind := fs.String("kind", "agent", "creator kind agent or human")
@@ -184,9 +186,6 @@ func runAdd(e *env, args []string) (any, *cliError) {
 	if fs.NArg() != 0 {
 		return nil, usageError("add: no positional arguments expected")
 	}
-	if *prefix == "" {
-		return nil, usageError("add: --prefix is required (project resolution comes with stage v1)")
-	}
 	description, derr := readText(*desc, *fromFile)
 	if derr != nil {
 		return nil, derr
@@ -195,8 +194,20 @@ func runAdd(e *env, args []string) (any, *cliError) {
 	if cerr != nil {
 		return nil, cerr
 	}
+	// Project prefix: flag, then DK_PROJECT, then bindings, then the
+	// store's single registered prefix.
+	prefixValue, prefixSrc, perr := e.prefixForAdd(context.Background(), *prefix, s)
+	if perr != nil {
+		return nil, perr
+	}
+	if prefixValue == "" {
+		return nil, usageError("add: " + noPrefixHint)
+	}
+	if !e.json {
+		e.msg("project: %s (%s)\n", prefixValue, prefixSrc)
+	}
 	id, err := s.Add(context.Background(), service.AddRequest{
-		Prefix:      *prefix,
+		Prefix:      prefixValue,
 		Title:       *title,
 		Description: description,
 		Labels:      splitComma(*labels),

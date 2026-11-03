@@ -45,6 +45,12 @@ top-level CHANGELOG.md and are written at release time from this file.
 - v0.2.0 changes (single binary `dk`, entry point cmd/dk; comments
   named `<UTC-timestamp>-<author>.md` without a number, inbox
   marker by file names, ADR-0007) — handed over 2026-11-03
+- Git-like discovery and project resolution (ADR-0008): commands
+  work inside the ticket repo without any argument; `dk use` binds
+  store and prefix for code repositories; `add` prefix chain
+  (flag > DK_PROJECT > bindings > single registered prefix);
+  `branch` key in dricket.toml; `add -p` is now the prefix, parent
+  is `--parent` — handed over 2026-11-03
 
 ## Shipped
 

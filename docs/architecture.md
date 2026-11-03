@@ -155,6 +155,7 @@ Index only; details in `docs/adr/`.
 | [0005](adr/0005-ticket-priorities.md) | Ticket priorities (stage v2) | accepted |
 | [0006](adr/0006-next-orders-by-priority.md) | next orders by priority first | accepted |
 | [0007](adr/0007-comment-naming.md) | Comments named by timestamp and author | accepted |
+| [0008](adr/0008-discovery-and-project-resolution.md) | Git-like store discovery and project resolution | accepted |
 
 ## 10. Quality requirements
 

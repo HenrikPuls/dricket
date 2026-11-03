@@ -27,6 +27,7 @@ const ConfigSchemaVersion = 1
 type Config struct {
 	SchemaVersion int
 	MinVersion    string // dotted integers; "" disables the check
+	Branch        string // ticket branch of this store (discovery default)
 
 	LeaseS        time.Duration
 	LeaseM        time.Duration
@@ -52,6 +53,7 @@ type Config struct {
 type raw struct {
 	SchemaVersion int    `toml:"schema_version"`
 	MinVersion    string `toml:"min_version"`
+	Branch        string `toml:"branch"`
 	Limits        struct {
 		LeaseS        string `toml:"lease_s"`
 		LeaseM        string `toml:"lease_m"`
@@ -80,6 +82,7 @@ func Defaults() *Config {
 	maxExt := 3
 	return &Config{
 		SchemaVersion: ConfigSchemaVersion,
+		Branch:        "tickets",
 		LeaseS:        2 * time.Hour,
 		LeaseM:        8 * time.Hour,
 		LeaseL:        24 * time.Hour,
@@ -126,6 +129,11 @@ func Parse(data []byte) (*Config, error) {
 		cfg.SchemaVersion = r.SchemaVersion
 	}
 	cfg.MinVersion = r.MinVersion
+	// The branch key feeds store discovery; the store itself validates
+	// the name with git before using it.
+	if r.Branch != "" {
+		cfg.Branch = r.Branch
+	}
 
 	dur := func(field, what string, into *time.Duration) error {
 		if field == "" {
