@@ -10,14 +10,14 @@ func TestCLIPriority(t *testing.T) {
 	setupBareCLI(t)
 
 	// Default priority.
-	runForTest(t, "add", "--prefix", "app", "-c", "plain task", "--unclaimed")
+	runForTest(t, "add", "--prefix", "app", "-m", "plain task", "--unclaimed")
 	// Explicit priority.
-	code, _, errMsg := runForTest(t, "add", "--prefix", "app", "-c", "hot task", "--unclaimed", "--priority", "critical")
+	code, _, errMsg := runForTest(t, "add", "--prefix", "app", "-m", "hot task", "--unclaimed", "--priority", "critical")
 	if code != 0 {
 		t.Fatalf("add critical = %d, %q", code, errMsg)
 	}
 	// Unknown value.
-	code, _, errMsg = runForTest(t, "add", "--prefix", "app", "-c", "x", "--unclaimed", "--priority", "bogus")
+	code, _, errMsg = runForTest(t, "add", "--prefix", "app", "-m", "x", "--unclaimed", "--priority", "bogus")
 	if code != exitInvalid || !strings.Contains(errMsg, "priority") {
 		t.Fatalf("add bogus priority = %d, %q; want 14", code, errMsg)
 	}

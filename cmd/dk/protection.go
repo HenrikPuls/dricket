@@ -13,7 +13,8 @@ import (
 
 func runForceRelease(e *env, args []string) (any, *cliError) {
 	fs := newFlagSet("force-release")
-	reason := fs.String("reason", "", "why the claim is force-released (required)")
+	reason := fs.String("m", "", "why the claim is force-released (required)")
+	fs.StringVar(reason, "message", "", "why the claim is force-released (required)")
 	stage := fs.String("stage", "open", "target stage after the release (default open)")
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
@@ -22,7 +23,7 @@ func runForceRelease(e *env, args []string) (any, *cliError) {
 		return nil, usageError("force-release: exactly one ticket id expected")
 	}
 	if *reason == "" {
-		return nil, usageError("force-release: --reason is required")
+		return nil, usageError("force-release: -m/--message is required")
 	}
 	s, cerr := e.svc()
 	if cerr != nil {
@@ -53,9 +54,9 @@ const guideText = `dricket agent guide
 Rules
   1. Edit only your own claimed ticket. Comment on other claimed tickets.
   2. Workflow: dk next (--claim) -> dk sync -> edit/work -> dk inbox ->
-     dk commit -> dk release --stage review --result "...".
-  3. Exit 12 means the ticket changed remotely: keep your local edit and
-     reconcile deliberately; dk restore discards it only on your request.
+     dk commit -> dk release --stage review -m "...".
+  3. Exit 12 means a ticket or local checkout conflict: keep your local edit
+     and reconcile deliberately; dk restore discards it only on your request.
   4. Exit 13 means your claim was taken over: STOP. Write nothing more,
      to tickets or code; keep local changes.
   5. Exit 15 with outcome-unknown: never repeat the mutation blindly.
@@ -65,14 +66,14 @@ Rules
 Workflow
   dk next [--claim --size S|M|L]   pick the next suitable ticket
   dk claim <id> --size M           take it (idempotent if already yours)
-  dk sync                          fast-forward a clean ticket checkout
+  dk sync                          refresh and fast-forward a clean checkout
   dk restore <path>                discard local changes without fetching
   dk commit <id>                   validate and publish the edited ticket
-  dk extend <id> --reason "..."    need more time; the store limits this
-  dk update <id> --note "..."      progress note, claim stays
-  dk release <id> --stage review --result "..."   hand it back
+  dk extend <id> -m "..."          need more time; the store limits this
+  dk note <id> -m "..."            progress note, claim stays
+  dk release <id> --stage review -m "..."          hand it back
   dk set <id> depends=app-7        targeted field mutation
-  dk comment <id> <text>           anyone may comment, no claim needed
+  dk comment <id> -m <text>        anyone may comment, no claim needed
   dk inbox <id>                    what is new since your last look
 
 Claims

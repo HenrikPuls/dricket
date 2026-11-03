@@ -37,7 +37,7 @@ func inCLIDir(t *testing.T, dir string) {
 func setupCLIWorkspace(t *testing.T) (bare, dir string) {
 	t.Helper()
 	bare = setupBareCLI(t)
-	if code, out, errMsg := runForTest(t, "add", "--prefix", "app", "-c", "old title"); code != 0 {
+	if code, out, errMsg := runForTest(t, "add", "--prefix", "app", "-m", "old title"); code != 0 {
 		t.Fatalf("add = %d, %q, %q", code, out, errMsg)
 	}
 	dir = filepath.Join(t.TempDir(), "checkout")
@@ -101,7 +101,7 @@ func TestSyncRestoreAndCommitErrors(t *testing.T) {
 	if code, _, _ := runForTest(t, "sync"); code != 1 {
 		t.Fatalf("dirty sync = %d, want 1", code)
 	}
-	if code, _, _ := runForTest(t, "note", "app-1", "remote"); code != 0 {
+	if code, _, _ := runForTest(t, "note", "app-1", "-m", "remote"); code != 0 {
 		t.Fatalf("note = %d", code)
 	}
 	if code, _, _ := runForTest(t, "commit", "app-1"); code != 12 {
@@ -116,7 +116,7 @@ func TestLocalDirtyCheckoutConflictCLI(t *testing.T) {
 		t.Fatalf("init = %d, %q", code, errMsg)
 	}
 	t.Chdir(dir)
-	if code, out, errMsg := runForTest(t, "add", "-c", "old title"); code != 0 {
+	if code, out, errMsg := runForTest(t, "add", "-m", "old title"); code != 0 {
 		t.Fatalf("add = %d, %q, %q", code, out, errMsg)
 	}
 	editCLICommitTicket(t, dir, "title: old title", "title: local edit")
@@ -152,7 +152,7 @@ func TestLocalCommitCLIWorkflow(t *testing.T) {
 		t.Fatalf("init = %d, %q", code, errMsg)
 	}
 	t.Chdir(dir)
-	if code, out, errMsg := runForTest(t, "add", "-c", "old title"); code != 0 {
+	if code, out, errMsg := runForTest(t, "add", "-m", "old title"); code != 0 {
 		t.Fatalf("add = %d, %q, %q", code, out, errMsg)
 	}
 	if code, out, errMsg := runForTest(t, "sync"); code != 0 {
@@ -160,7 +160,7 @@ func TestLocalCommitCLIWorkflow(t *testing.T) {
 	}
 	editCLICommitTicket(t, dir, "title: old title", "title: local title")
 	t.Setenv("DK_OWNER", "commenter")
-	if code, out, errMsg := runForTest(t, "comment", "app-1", "comment during edit"); code != 0 {
+	if code, out, errMsg := runForTest(t, "comment", "app-1", "-m", "comment during edit"); code != 0 {
 		t.Fatalf("comment = %d, %q, %q", code, out, errMsg)
 	}
 	t.Setenv("DK_OWNER", "henrik")
@@ -184,7 +184,7 @@ func TestLocalCommitCLIWorkflow(t *testing.T) {
 	if content, err := os.ReadFile(ticketPath); err != nil || !strings.Contains(string(content), "title: local title") || !strings.Contains(string(content), "rev: 2") {
 		t.Fatalf("adopted ticket = %q, %v", content, err)
 	}
-	if code, out, errMsg := runForTest(t, "release", "--stage", "review", "--result", "done", "app-1"); code != 0 {
+	if code, out, errMsg := runForTest(t, "release", "--stage", "review", "--message", "done", "app-1"); code != 0 {
 		t.Fatalf("local release = %d, %q, %q", code, out, errMsg)
 	}
 

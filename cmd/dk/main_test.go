@@ -105,13 +105,3 @@ func TestStoreFlagRequiresValue(t *testing.T) {
 		t.Fatalf("code = %d, stderr = %q", code, errMsg)
 	}
 }
-
-func TestQuietStillReportsErrors(t *testing.T) {
-	code, _, errMsg := runForTest(t, "-q", "frobnicate")
-	if code != exitUsage {
-		t.Fatalf("code = %d", code)
-	}
-	if !strings.Contains(errMsg, "unknown command") {
-		t.Errorf("stderr = %q", errMsg)
-	}
-}

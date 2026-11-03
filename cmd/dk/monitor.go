@@ -15,7 +15,8 @@ import (
 
 func runExtend(e *env, args []string) (any, *cliError) {
 	fs := newFlagSet("extend")
-	reason := fs.String("reason", "", "why the lease is extended (required)")
+	reason := fs.String("m", "", "why the lease is extended (required)")
+	fs.StringVar(reason, "message", "", "why the lease is extended (required)")
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
@@ -23,7 +24,7 @@ func runExtend(e *env, args []string) (any, *cliError) {
 		return nil, usageError("extend: exactly one ticket id expected")
 	}
 	if *reason == "" {
-		return nil, usageError("extend: --reason is required")
+		return nil, usageError("extend: -m/--message is required")
 	}
 	s, cerr := e.svc()
 	if cerr != nil {
@@ -40,21 +41,17 @@ func runExtend(e *env, args []string) (any, *cliError) {
 	return res, nil
 }
 
-// --------------------------------------------------------------- update --
+// ----------------------------------------------------------------- note --
 
-// update keeps the claim and records progress; in stage v1 it carries the
-// note, body editing through the tool comes later.
-func runUpdate(e *env, args []string) (any, *cliError) {
-	fs := newFlagSet("update")
-	note := fs.String("note", "", "progress note (required in stage v1)")
+func runNote(e *env, args []string) (any, *cliError) {
+	fs := newFlagSet("note")
+	note := fs.String("m", "", "progress note")
+	fs.StringVar(note, "message", "", "progress note")
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
-	if fs.NArg() != 1 {
-		return nil, usageError("update: exactly one ticket id expected")
-	}
-	if *note == "" {
-		return nil, usageError("update: --note is required in stage v1")
+	if fs.NArg() != 1 || *note == "" {
+		return nil, usageError("note: a ticket id and -m/--message text are required")
 	}
 	s, cerr := e.svc()
 	if cerr != nil {
@@ -65,31 +62,7 @@ func runUpdate(e *env, args []string) (any, *cliError) {
 		return nil, wrapErr(err)
 	}
 	if !e.json {
-		e.outf("updated %s (rev %d, claim kept)\n", res.ID, res.Rev)
-	}
-	return res, nil
-}
-
-// ----------------------------------------------------------------- note --
-
-func runNote(e *env, args []string) (any, *cliError) {
-	fs := newFlagSet("note")
-	if cerr := parseFlags(fs, args); cerr != nil {
-		return nil, cerr
-	}
-	if fs.NArg() < 2 {
-		return nil, usageError("note: a ticket id and the text are required")
-	}
-	s, cerr := e.svc()
-	if cerr != nil {
-		return nil, cerr
-	}
-	res, err := s.Note(context.Background(), fs.Arg(0), strings.Join(fs.Args()[1:], " "))
-	if err != nil {
-		return nil, wrapErr(err)
-	}
-	if !e.json {
-		e.outf("noted on %s (rev %d)\n", res.ID, res.Rev)
+		e.outf("noted on %s (rev %d, claim kept)\n", res.ID, res.Rev)
 	}
 	return res, nil
 }

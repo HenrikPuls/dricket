@@ -27,7 +27,7 @@ func TestCLIAddInsideStoreWithoutAnyFlags(t *testing.T) {
 
 	// From the store root: no --store, no DK_STORE, no --prefix.
 	t.Chdir(dir)
-	code, out, errMsg := runForTest(t, "add", "-c", "zero config")
+	code, out, errMsg := runForTest(t, "add", "-m", "zero config")
 	if code != 0 || !strings.Contains(out, "app-1") {
 		t.Fatalf("add = %d, %q, %q", code, out, errMsg)
 	}
@@ -38,7 +38,7 @@ func TestCLIAddInsideStoreWithoutAnyFlags(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	t.Chdir(nested)
-	code, out, _ = runForTest(t, "add", "-c", "from deep inside", "--unclaimed")
+	code, out, _ = runForTest(t, "add", "-m", "from deep inside", "--unclaimed")
 	if code != 0 || !strings.Contains(out, "app-2") {
 		t.Fatalf("nested add = %d, %q", code, out)
 	}
@@ -52,7 +52,7 @@ func TestCLIDiscoveryHonoursBranchConfig(t *testing.T) {
 		t.Fatalf("init = %d, %q", code, errMsg)
 	}
 	t.Chdir(dir)
-	code, out, _ := runForTest(t, "add", "-c", "on the work branch")
+	code, out, _ := runForTest(t, "add", "-m", "on the work branch")
 	if code != 0 || !strings.Contains(out, "app-1") {
 		t.Fatalf("add = %d, %q", code, out)
 	}
@@ -81,7 +81,7 @@ func TestCLIUseBindsCodeRepo(t *testing.T) {
 	}
 
 	// `dk add` in the code repo lands in the bound store.
-	code, out, errMsg := runForTest(t, "add", "-c", "from the code repo", "--unclaimed")
+	code, out, errMsg := runForTest(t, "add", "-m", "from the code repo", "--unclaimed")
 	if code != 0 || !strings.Contains(out, "app-1") {
 		t.Fatalf("add from code repo = %d, %q, %q", code, out, errMsg)
 	}
@@ -123,20 +123,20 @@ func TestCLIPrefixPrecedence(t *testing.T) {
 	t.Chdir(dir)
 
 	// 1. --prefix beats everything.
-	code, out, _ := runForTest(t, "add", "-c", "explicit", "--unclaimed", "--prefix", "ops")
+	code, out, _ := runForTest(t, "add", "-m", "explicit", "--unclaimed", "--prefix", "ops")
 	if code != 0 || !strings.Contains(out, "ops-1") {
 		t.Fatalf("explicit prefix = %d, %q", code, out)
 	}
 	// 2. DK_PROJECT beats bindings.
 	t.Setenv("DK_PROJECT", "ops")
-	if code, out, _ = runForTest(t, "add", "-c", "from env", "--unclaimed"); code != 0 || !strings.Contains(out, "ops-2") {
+	if code, out, _ = runForTest(t, "add", "-m", "from env", "--unclaimed"); code != 0 || !strings.Contains(out, "ops-2") {
 		t.Fatalf("env prefix = %d, %q", code, out)
 	}
 	// 3. binding: dk use ops inside the store.
 	if code, _, _ = runForTest(t, "use", "ops"); code != 0 {
 		t.Fatalf("use ops failed")
 	}
-	if code, out, _ = runForTest(t, "add", "-c", "from binding", "--unclaimed"); code != 0 || !strings.Contains(out, "ops-3") {
+	if code, out, _ = runForTest(t, "add", "-m", "from binding", "--unclaimed"); code != 0 || !strings.Contains(out, "ops-3") {
 		t.Fatalf("binding prefix = %d, %q", code, out)
 	}
 	// 4. no source at all is impossible here: the store has exactly one
@@ -156,7 +156,7 @@ func TestCLIUsePrintsResolutionAndErrors(t *testing.T) {
 	}
 
 	// add outside any store fails with the store hint.
-	code, _, errMsg := runForTest(t, "add", "-c", "x")
+	code, _, errMsg := runForTest(t, "add", "-m", "x")
 	if code != exitUsage || !strings.Contains(errMsg, "no ticket store found") {
 		t.Fatalf("add outside store = %d, %q; want exit 2 with store hint", code, errMsg)
 	}
@@ -168,14 +168,14 @@ func TestCLIUsePrintsResolutionAndErrors(t *testing.T) {
 		t.Fatalf("plain init failed")
 	}
 	t.Chdir(dir)
-	code, _, errMsg = runForTest(t, "add", "-c", "no prefix yet")
+	code, _, errMsg = runForTest(t, "add", "-m", "no prefix yet")
 	if code != exitUsage || !strings.Contains(errMsg, "no project prefix") {
 		t.Fatalf("add without prefix = %d, %q; want exit 2 with prefix hint", code, errMsg)
 	}
 	if code, _, _ = runForTest(t, "use", "app"); code != 0 {
 		t.Fatalf("use app failed")
 	}
-	if code, out, _ = runForTest(t, "add", "-c", "bound now"); code != 0 || !strings.Contains(out, "app-1") {
+	if code, out, _ = runForTest(t, "add", "-m", "bound now"); code != 0 || !strings.Contains(out, "app-1") {
 		t.Fatalf("add after use = %d, %q", code, out)
 	}
 

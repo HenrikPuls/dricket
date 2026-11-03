@@ -58,7 +58,7 @@ func TestParseFlagsErrorsAndTerminator(t *testing.T) {
 
 func TestCLIClaimAcceptsSizeAfterID(t *testing.T) {
 	setupBareCLI(t)
-	if code, _, _ := runForTest(t, "add", "--prefix", "app", "-c", "x", "--unclaimed"); code != 0 {
+	if code, _, _ := runForTest(t, "add", "--prefix", "app", "-m", "x", "--unclaimed"); code != 0 {
 		t.Fatalf("add = %d", code)
 	}
 	if code, out, errMsg := runForTest(t, "claim", "app-1", "--size", "S"); code != 0 {

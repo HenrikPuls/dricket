@@ -22,10 +22,9 @@ var serviceCmds = []command{
 	{name: "sync", synopsis: "fast-forward a clean ticket checkout", run: runSync},
 	{name: "restore", synopsis: "discard local changes to one path", run: runRestore},
 	{name: "commit", synopsis: "validate and publish an edited ticket", run: runCommit},
-	{name: "release", synopsis: "push and free a ticket", run: runRelease},
+	{name: "release", synopsis: "publish and free a ticket", run: runRelease},
 	{name: "extend", synopsis: "extend the lease of a ticket", run: runExtend},
-	{name: "update", synopsis: "add a progress note, keep the claim", run: runUpdate},
-	{name: "note", synopsis: "add a log entry", run: runNote},
+	{name: "note", synopsis: "add a progress note, keep the claim", run: runNote},
 	{name: "comment", synopsis: "append a comment", run: runComment},
 	{name: "set", synopsis: "change a free field", run: runSet},
 	{name: "ls", synopsis: "list tickets", run: runLs},
@@ -203,7 +202,8 @@ func splitComma(s string) []string {
 
 func runAdd(e *env, args []string) (any, *cliError) {
 	fs := newFlagSet("add")
-	title := fs.String("c", "", "title")
+	title := fs.String("m", "", "ticket title")
+	fs.StringVar(title, "message", "", "ticket title")
 	desc := fs.String("d", "", "description ('-' for stdin)")
 	fromFile := fs.String("F", "", "read the description from a file")
 	labels := fs.String("l", "", "comma-separated labels")
@@ -296,7 +296,8 @@ func runClaim(e *env, args []string) (any, *cliError) {
 func runRelease(e *env, args []string) (any, *cliError) {
 	fs := newFlagSet("release")
 	stage := fs.String("stage", "review", "target stage")
-	result := fs.String("result", "", "result note")
+	result := fs.String("m", "", "result note")
+	fs.StringVar(result, "message", "", "result note")
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
@@ -321,17 +322,19 @@ func runRelease(e *env, args []string) (any, *cliError) {
 
 func runComment(e *env, args []string) (any, *cliError) {
 	fs := newFlagSet("comment")
+	message := fs.String("m", "", "comment text")
+	fs.StringVar(message, "message", "", "comment text")
 	file := fs.String("F", "", "read the comment from a file")
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
-	if fs.NArg() < 1 {
-		return nil, usageError("comment: a ticket id and the text (argument or -F file) are required")
+	if fs.NArg() != 1 || (*message == "" && *file == "") {
+		return nil, usageError("comment: a ticket id and -m/--message or -F file are required")
 	}
 	id := fs.Arg(0)
-	text := strings.Join(fs.Args()[1:], "\n")
+	text := *message
 	if *file != "" {
-		b, err := os.ReadFile(*file)
+		b, err := os.ReadFile(*file) // #nosec G304 -- the -F flag reads exactly the named file
 		if err != nil {
 			return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 		}

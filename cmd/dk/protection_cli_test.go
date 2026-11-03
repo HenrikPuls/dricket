@@ -45,20 +45,20 @@ func TestCLIForceReleaseAndGuide(t *testing.T) {
 	setupBareCLI(t)
 	cliPushMain(t, "dricket.toml", "[security]\nadmins = [\"cli-tester\"]\n")
 
-	runForTest(t, "add", "--prefix", "app", "-c", "claimed work")
-	code, _, errMsg := runForTest(t, "extend", "--reason", "still working", "app-1")
+	runForTest(t, "add", "--prefix", "app", "-m", "claimed work")
+	code, _, errMsg := runForTest(t, "extend", "--message", "still working", "app-1")
 	if code != 0 {
 		t.Fatalf("extend = %d, %q", code, errMsg)
 	}
 
 	// The same owner is the admin here: force-release works.
-	code, out, errMsg := runForTest(t, "force-release", "--reason", "runner died", "app-1")
+	code, out, errMsg := runForTest(t, "force-release", "--message", "runner died", "app-1")
 	if code != 0 || !strings.Contains(out, "force-released app-1 -> open") {
 		t.Fatalf("force-release = %d, %q, %q", code, out, errMsg)
 	}
 
 	// Idempotent on an already free ticket.
-	code, out, _ = runForTest(t, "force-release", "--reason", "again", "app-1")
+	code, out, _ = runForTest(t, "force-release", "--message", "again", "app-1")
 	if code != 0 || !strings.Contains(out, "already free") {
 		t.Fatalf("idempotent force-release = %d, %q", code, out)
 	}
@@ -81,15 +81,15 @@ func TestCLIQuotaAndSecret(t *testing.T) {
 	cliPushMain(t, "dricket.toml", "[security]\nquota_tickets_per_day = 2\nsecret_scan = true\n")
 	_ = bare
 
-	runForTest(t, "add", "--prefix", "app", "-c", "one", "--unclaimed")
-	runForTest(t, "add", "--prefix", "app", "-c", "two", "--unclaimed")
+	runForTest(t, "add", "--prefix", "app", "-m", "one", "--unclaimed")
+	runForTest(t, "add", "--prefix", "app", "-m", "two", "--unclaimed")
 
-	code, _, errMsg := runForTest(t, "add", "--prefix", "app", "-c", "three", "--unclaimed")
+	code, _, errMsg := runForTest(t, "add", "--prefix", "app", "-m", "three", "--unclaimed")
 	if code != exitQuota || !strings.Contains(errMsg, "quota reached") {
 		t.Fatalf("add beyond quota = %d, %q; want 18", code, errMsg)
 	}
 
-	code, _, errMsg = runForTest(t, "add", "--prefix", "app", "-c", "use AKIAIOSFODNN7EXAMPLE here")
+	code, _, errMsg = runForTest(t, "add", "--prefix", "app", "-m", "use AKIAIOSFODNN7EXAMPLE here")
 	if code != exitSecret || !strings.Contains(errMsg, "secret scan") {
 		t.Fatalf("add with secret = %d, %q; want 19", code, errMsg)
 	}
@@ -103,8 +103,8 @@ func TestCLIQuotaAndSecret(t *testing.T) {
 
 func TestCLIForceReleaseDeniedWithoutAdmins(t *testing.T) {
 	setupBareCLI(t) // no dricket.toml: nobody is an admin
-	runForTest(t, "add", "--prefix", "app", "-c", "x")
-	code, _, errMsg := runForTest(t, "force-release", "--reason", "no admins", "app-1")
+	runForTest(t, "add", "--prefix", "app", "-m", "x")
+	code, _, errMsg := runForTest(t, "force-release", "--message", "no admins", "app-1")
 	if code != exitForbidden || !strings.Contains(errMsg, "security.admins") {
 		t.Fatalf("force-release without admins = %d, %q; want 17", code, errMsg)
 	}

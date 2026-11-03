@@ -61,10 +61,6 @@ type env struct {
 	stdout   io.Writer
 	stderr   io.Writer
 	json     bool
-	quiet    bool
-	noColor  bool
-	assume   bool // -y
-	dryRun   bool // -n
 	store    string
 	profile  string
 	svcCache *service.Service
@@ -172,14 +168,6 @@ func parseGlobals(e *env, args []string) ([]string, any, *cliError) {
 		switch {
 		case a == "--json":
 			e.json = true
-		case a == "-q" || a == "--quiet":
-			e.quiet = true
-		case a == "--no-color":
-			e.noColor = true
-		case a == "-y" || a == "--assume-yes":
-			e.assume = true
-		case a == "-n" || a == "--dry-run":
-			e.dryRun = true
 		case a == "--store" || a == "--profile":
 			if i+1 >= len(args) {
 				return nil, nil, usageError("%s requires a value", a)
@@ -284,10 +272,6 @@ func usageText() string {
 	b.WriteString("Command flags come before positional arguments.\n")
 	b.WriteString("Global flags:\n")
 	b.WriteString("  --json            data output as JSON with schema_version\n")
-	b.WriteString("  -q, --quiet       suppress non-essential messages\n")
-	b.WriteString("  --no-color        never colorise output (NO_COLOR is honoured)\n")
-	b.WriteString("  -y, --assume-yes  answer prompts with yes\n")
-	b.WriteString("  -n, --dry-run     show what would be done\n")
 	b.WriteString("  --store <path>    ticket store (remote, branch, path)\n")
 	b.WriteString("  --profile <name>  identity profile\n")
 	b.WriteString("  --version         print the version and exit\n")

@@ -27,7 +27,7 @@ func TestCLIInitInDirectory(t *testing.T) {
 	t.Setenv("DK_STORE", "")
 	t.Setenv("DK_DATA_DIR", t.TempDir())
 	t.Setenv("DK_OWNER", "first-user")
-	code, out, _ = runForTest(t, "add", "-c", "first ticket", "--unclaimed")
+	code, out, _ = runForTest(t, "add", "-m", "first ticket", "--unclaimed")
 	if code != 0 || !strings.Contains(out, "app-1") {
 		t.Fatalf("add in fresh store = %d, %q", code, out)
 	}
@@ -76,7 +76,7 @@ func TestCLIInitCustomBranchChecksOutTicketBranch(t *testing.T) {
 	t.Setenv("DK_STORE", "")
 	t.Setenv("DK_DATA_DIR", t.TempDir())
 	t.Setenv("DK_OWNER", "custom-branch-user")
-	if code, out, _ := runForTest(t, "add", "-c", "custom branch", "--unclaimed"); code != 0 || !strings.Contains(out, "app-1") {
+	if code, out, _ := runForTest(t, "add", "-m", "custom branch", "--unclaimed"); code != 0 || !strings.Contains(out, "app-1") {
 		t.Fatalf("add on custom branch = %d, %q", code, out)
 	}
 }
@@ -126,7 +126,7 @@ git_email = "demo@invalid"
 	// profile's owner is what lands in the ticket.
 	t.Setenv("DK_OWNER", "")
 	// The profile is selected before the command.
-	code, _, errMsg := runForTest(t, "--profile", "demo", "add", "--prefix", "app", "-c", "by the demo profile")
+	code, _, errMsg := runForTest(t, "--profile", "demo", "add", "--prefix", "app", "-m", "by the demo profile")
 	if code != 0 {
 		t.Fatalf("add with profile = %d, %q", code, errMsg)
 	}
@@ -136,7 +136,7 @@ git_email = "demo@invalid"
 	}
 
 	// An unknown profile name must fail loudly, not fall back.
-	code, _, errMsg = runForTest(t, "--profile", "nope", "add", "--prefix", "app", "-c", "x")
+	code, _, errMsg = runForTest(t, "--profile", "nope", "add", "--prefix", "app", "-m", "x")
 	if code != exitError || !strings.Contains(errMsg, "profile") {
 		t.Fatalf("unknown profile = %d, %q; want a profile error", code, errMsg)
 	}
