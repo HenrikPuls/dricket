@@ -2,10 +2,13 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	agentskills "github.com/HenrikPuls/dricket/skills"
 )
 
 func TestCLIInitInDirectory(t *testing.T) {
@@ -87,22 +90,63 @@ func TestCLISetupAgent(t *testing.T) {
 	t.Chdir(dir)
 
 	code, out, _ := runForTest(t, "setup-agent")
-	if code != 0 || !strings.Contains(out, "wrote the store pointer") {
+	if code != 0 || !strings.Contains(out, "wrote the store pointer") || !strings.Contains(out, "dricket skill") {
 		t.Fatalf("setup-agent = %d, %q", code, out)
 	}
 	content, err := os.ReadFile(filepath.Join(dir, "AGENTS.md")) // #nosec G304 -- test scaffolding in t.TempDir
 	if err != nil || !strings.Contains(string(content), "dk guide") || !strings.Contains(string(content), "branch tickets") {
 		t.Fatalf("AGENTS.md = %q, %v", content, err)
 	}
+	skillPath := filepath.Join(dir, ".agents", "skills", "dricket", "SKILL.md")
+	skill, err := os.ReadFile(skillPath) // #nosec G304 -- test scaffolding in t.TempDir
+	if err != nil || string(skill) != agentskills.Dricket {
+		t.Fatalf("installed skill does not match embedded asset: %v", err)
+	}
 
-	// Idempotent: a second run changes nothing.
-	code, _, _ = runForTest(t, "setup-agent")
+	// Idempotent: a second run changes nothing and reports both files.
+	code, out, _ = runForTest(t, "--json", "setup-agent")
 	if code != 0 {
 		t.Fatalf("second setup-agent = %d", code)
 	}
+	var response struct {
+		Data struct {
+			File         string `json:"file"`
+			Written      bool   `json:"written"`
+			SkillFile    string `json:"skill_file"`
+			SkillWritten bool   `json:"skill_written"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &response); err != nil || response.Data.Written || response.Data.SkillWritten || response.Data.SkillFile != skillPath {
+		t.Fatalf("second setup-agent JSON = %q, %v", out, err)
+	}
 	content2, _ := os.ReadFile(filepath.Join(dir, "AGENTS.md")) // #nosec G304 -- test scaffolding in t.TempDir
-	if string(content) != string(content2) {
-		t.Errorf("second setup-agent changed the file:\n%q\n%q", content, content2)
+	skill2, _ := os.ReadFile(skillPath)                         // #nosec G304 -- test scaffolding in t.TempDir
+	if string(content) != string(content2) || string(skill) != string(skill2) {
+		t.Error("idempotent setup-agent changed an existing file")
+	}
+}
+
+func TestCLISetupAgentRefusesModifiedSkill(t *testing.T) {
+	setupBareCLI(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	skillPath := filepath.Join(dir, ".agents", "skills", "dricket", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(skillPath), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(skillPath, []byte("user-owned skill\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errMsg := runForTest(t, "setup-agent")
+	if code != exitError || !strings.Contains(errMsg, skillPath) {
+		t.Fatalf("modified skill setup = %d, %q; want refusal", code, errMsg)
+	}
+	content, _ := os.ReadFile(skillPath) // #nosec G304 -- test scaffolding in t.TempDir
+	if string(content) != "user-owned skill\n" {
+		t.Fatalf("modified skill was overwritten: %q", content)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "AGENTS.md")); !os.IsNotExist(err) {
+		t.Fatalf("AGENTS.md changed despite skill preflight failure: %v", err)
 	}
 }
 
