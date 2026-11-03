@@ -12,7 +12,7 @@ import (
 func TestCLIInitInDirectory(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "tickets")
 
-	code, out, errMsg := runForTest(t, "init", dir)
+	code, out, errMsg := runForTest(t, "init", dir, "app")
 	if code != 0 || !strings.Contains(out, "initialized ticket store in") {
 		t.Fatalf("init = %d, %q, %q", code, out, errMsg)
 	}
@@ -23,16 +23,18 @@ func TestCLIInitInDirectory(t *testing.T) {
 		t.Fatalf("dricket.toml must stay on main; stat err = %v", err)
 	}
 
-	// Task 4 removes this intermediate switch when local writes no longer push.
-	runGitCmd(t, dir, "switch", "--quiet", "main")
-
-	// The fresh store works right away.
-	t.Setenv("DK_STORE", dir+"#tickets")
+	// The fresh store works directly from its ticket checkout and discovery.
+	t.Chdir(dir)
+	t.Setenv("DK_STORE", "")
 	t.Setenv("DK_DATA_DIR", t.TempDir())
 	t.Setenv("DK_OWNER", "first-user")
-	code, out, _ = runForTest(t, "add", "--prefix", "app", "-c", "first ticket", "--unclaimed")
+	code, out, _ = runForTest(t, "add", "-c", "first ticket", "--unclaimed")
 	if code != 0 || !strings.Contains(out, "app-1") {
 		t.Fatalf("add in fresh store = %d, %q", code, out)
+	}
+	ticketPath := filepath.Join(dir, "tickets", "app", "0000", "app-1", "ticket.md")
+	if content, err := os.ReadFile(ticketPath); err != nil || !strings.Contains(string(content), "title: first ticket") {
+		t.Fatalf("visible ticket = %q, %v", content, err)
 	}
 
 	// A second init into the same directory is refused.
@@ -67,6 +69,13 @@ func TestCLIInitCustomBranchChecksOutTicketBranch(t *testing.T) {
 	}
 	if out, err := exec.Command("git", "-C", dir, "show", "main:dricket.toml").Output(); err != nil || !strings.Contains(string(out), `branch = "work"`) {
 		t.Fatalf("main config = %q, %v", out, err)
+	}
+	t.Chdir(dir)
+	t.Setenv("DK_STORE", "")
+	t.Setenv("DK_DATA_DIR", t.TempDir())
+	t.Setenv("DK_OWNER", "custom-branch-user")
+	if code, out, _ := runForTest(t, "add", "-c", "custom branch", "--unclaimed"); code != 0 || !strings.Contains(out, "app-1") {
+		t.Fatalf("add on custom branch = %d, %q", code, out)
 	}
 }
 

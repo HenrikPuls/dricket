@@ -3,10 +3,14 @@ package store
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func commitVisibleFile(t *testing.T, dir, path, content, message string) string {
@@ -63,6 +67,111 @@ func TestLocalStoreUsesLinkedWorktreeAndSnapshot(t *testing.T) {
 	missing, err := st.ConfigFile(ctx, "missing.toml")
 	if err != nil || missing != nil {
 		t.Errorf("missing config = %q, %v; want nil, nil", missing, err)
+	}
+}
+
+func TestLocalWriteWithMainCheckedOut(t *testing.T) {
+	dir := initDiscoveryStore(t, "tickets")
+	runGit(t, dir, "switch", "--quiet", "main")
+	st := openStore(t, dir, "local-main", nil)
+	path := "tickets/app/0000/app-1/ticket.md"
+	if err := st.Write(context.Background(), writeFileSpec(path, "local content", nil)); err != nil {
+		t.Fatalf("local write: %v", err)
+	}
+	if got := runGit(t, dir, "show", "tickets:"+path); got != "local content" {
+		t.Errorf("ticket branch content = %q", got)
+	}
+	if got := strings.TrimSpace(runGit(t, dir, "symbolic-ref", "--short", "HEAD")); got != "main" {
+		t.Errorf("visible branch = %q; want main", got)
+	}
+	if content, err := os.ReadFile(filepath.Join(dir, "dricket.toml")); err != nil || !strings.Contains(string(content), "schema_version") {
+		t.Errorf("main checkout changed: %q, %v", content, err)
+	}
+}
+
+func TestLocalConcurrentClaimsKeepOneOwner(t *testing.T) {
+	dir := initDiscoveryStore(t, "tickets")
+	path := "tickets/app/0000/app-7/ticket.md"
+	const n = 4
+	stores := make([]*Store, n)
+	for i := range stores {
+		stores[i] = openStore(t, dir, fmt.Sprintf("runner-%d", i), func(o *Options) {
+			o.BackoffBase = time.Millisecond
+			o.BackoffCap = 10 * time.Millisecond
+		})
+	}
+	results := make(chan error, n)
+	var wg sync.WaitGroup
+	for i, st := range stores {
+		wg.Add(1)
+		go func(i int, s *Store) {
+			defer wg.Done()
+			owner := fmt.Sprintf("runner-%d", i)
+			results <- s.Write(context.Background(), WriteSpec{
+				Message: "claim " + owner,
+				Check: func(h Head) error {
+					has, err := h.Has(path)
+					if err == nil && has {
+						return errors.New("path already taken")
+					}
+					return err
+				},
+				Mutate: func(w Worktree) error { return w.WriteFile(path, "owner: "+owner+"\n") },
+			})
+		}(i, st)
+	}
+	wg.Wait()
+	close(results)
+	winners, losers := 0, 0
+	for err := range results {
+		if err == nil {
+			winners++
+			continue
+		}
+		var we *WriteError
+		if errors.As(err, &we) && we.Outcome == PreconditionFailed {
+			losers++
+		} else {
+			t.Errorf("unexpected local claim result: %v", err)
+		}
+	}
+	if winners != 1 || losers != n-1 {
+		t.Fatalf("winners=%d losers=%d; want 1/%d", winners, losers, n-1)
+	}
+	if got := runGit(t, dir, "rev-list", "--count", "refs/heads/tickets"); strings.TrimSpace(got) != "2" {
+		t.Errorf("ticket commits = %q; want 2", got)
+	}
+}
+
+func TestLocalConcurrentDistinctPathsAllLand(t *testing.T) {
+	dir := initDiscoveryStore(t, "tickets")
+	const n = 4
+	stores := make([]*Store, n)
+	for i := range stores {
+		stores[i] = openStore(t, dir, fmt.Sprintf("writer-%d", i), func(o *Options) {
+			o.BackoffBase = time.Millisecond
+			o.BackoffCap = 10 * time.Millisecond
+		})
+	}
+	errs := make(chan error, n)
+	var wg sync.WaitGroup
+	for i, st := range stores {
+		wg.Add(1)
+		go func(i int, s *Store) {
+			defer wg.Done()
+			path := fmt.Sprintf("tickets/app/0000/app-%d/ticket.md", i+1)
+			errs <- s.Write(context.Background(), writeFileSpec(path, fmt.Sprintf("file %d", i), nil))
+		}(i, st)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("concurrent local write: %v", err)
+		}
+	}
+	if got := runGit(t, dir, "rev-list", "--count", "refs/heads/tickets"); strings.TrimSpace(got) != fmt.Sprint(n+1) {
+		t.Errorf("ticket commits = %q; want %d", got, n+1)
 	}
 }
 

@@ -41,6 +41,9 @@ type WriteSpec struct {
 	Message string
 	Check   func(Head) error
 	Mutate  func(Worktree) error
+	// PreserveWorktree publishes locally without updating the user checkout;
+	// the whole-ticket commit adopts it through its guarded workspace flow.
+	PreserveWorktree bool
 }
 
 // Outcome says how a write ended.
@@ -166,29 +169,46 @@ func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 			return werr
 		}
 		werr.Commit = commit
-		_, pushStderr, err := s.git(ctx, "push", "--quiet", "origin",
-			fmt.Sprintf("HEAD:refs/heads/%s", s.opts.branch()))
-		if err == nil {
+		var publishErr error
+		publishOutput := ""
+		retryable := false
+		if s.localDir != "" {
+			retryable, publishErr = s.publishLocal(ctx, commit, s.baseSHA, spec.PreserveWorktree)
+			if publishErr != nil {
+				publishOutput = publishErr.Error()
+			}
+		} else {
+			_, publishOutput, publishErr = s.git(ctx, "push", "--quiet", "origin",
+				fmt.Sprintf("HEAD:refs/heads/%s", s.opts.branch()))
+			retryable = retryablePush(publishOutput)
+		}
+		if publishErr == nil {
 			return nil // accepted
 		}
-		if !retryablePush(pushStderr) {
+		if !retryable {
 			werr.Outcome = PushFailed
-			werr.PushStderr = pushStderr
-			if definitePushFailure(pushStderr) {
+			werr.PushStderr = publishOutput
+			if s.localDir == "" && definitePushFailure(publishOutput) {
 				return werr
 			}
-			accepted, reconcileErr := s.reconcilePush(ctx, commit)
+			var accepted bool
+			var reconcileErr error
+			if s.localDir != "" {
+				accepted, reconcileErr = s.reconcileLocal(ctx, commit)
+			} else {
+				accepted, reconcileErr = s.reconcilePush(ctx, commit)
+			}
 			if accepted {
 				return nil
 			}
 			if reconcileErr != nil {
 				werr.Outcome = PushUnknown
-				werr.Err = fmt.Errorf("%s; reconciliation failed: %w", firstLine(pushStderr), reconcileErr)
+				werr.Err = fmt.Errorf("%s; reconciliation failed: %w", firstLine(publishOutput), reconcileErr)
 			}
 			return werr
 		}
-		// Rejected as non-fast-forward: back off, then start over from a
-		// fresh fetch and re-check the preconditions.
+		// A concurrent ref rejection retries from a fresh snapshot and
+		// re-checks every precondition.
 		if attempt == s.opts.MaxAttempts || ctx.Err() != nil {
 			werr.Outcome = Timeout
 			return werr

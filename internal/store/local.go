@@ -3,8 +3,10 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -92,6 +94,77 @@ func (s *Store) resetLocalEmpty(ctx context.Context) error {
 
 func errorsNew(action string, err error) error {
 	return fmt.Errorf("%s: %w", action, err)
+}
+
+func (s *Store) publishLocal(ctx context.Context, candidate, base string, preserve bool) (bool, error) {
+	ref := "refs/heads/" + s.opts.branch()
+	checkout, checkedOut, err := s.localTicketCheckout(ctx, ref)
+	if err != nil {
+		return false, err
+	}
+	if preserve || !checkedOut {
+		_, stderr, err := s.git(ctx, "update-ref", ref, candidate, base)
+		if err == nil {
+			return false, nil
+		}
+		return localPublicationRace(stderr), fmt.Errorf("local ref update: %s", firstLine(stderr))
+	}
+
+	out, err := runGitEnv(ctx, checkout, s.opts,
+		"-c", "core.hooksPath="+s.hooksPath,
+		"merge", "--ff-only", "--quiet", candidate)
+	if err == nil {
+		return false, nil
+	}
+	return localPublicationRace(out), fmt.Errorf("local checkout fast-forward: %s", firstLine(out))
+}
+
+func (s *Store) localTicketCheckout(ctx context.Context, ref string) (string, bool, error) {
+	out, _, err := s.git(ctx, "worktree", "list", "--porcelain")
+	if err != nil {
+		return "", false, fmt.Errorf("list worktrees: %w", err)
+	}
+	var current string
+	for _, line := range strings.Split(out, "\n") {
+		if path, ok := strings.CutPrefix(line, "worktree "); ok {
+			current = path
+			continue
+		}
+		if line == "branch "+ref && current != "" {
+			return filepath.Clean(current), true, nil
+		}
+	}
+	return "", false, nil
+}
+
+func localPublicationRace(output string) bool {
+	lower := strings.ToLower(output)
+	for _, fragment := range []string{
+		"non-fast-forward", "not possible to fast-forward", "cannot lock ref",
+		"index.lock", "but expected",
+	} {
+		if strings.Contains(lower, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Store) reconcileLocal(ctx context.Context, candidate string) (bool, error) {
+	ref := "refs/heads/" + s.opts.branch()
+	head, _, err := s.git(ctx, "rev-parse", "--verify", ref+"^{commit}")
+	if err != nil {
+		return false, nil
+	}
+	_, _, err = s.git(ctx, "merge-base", "--is-ancestor", candidate, strings.TrimSpace(head))
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, err
 }
 
 func (s *Store) configFileLocal(ctx context.Context, name string) ([]byte, error) {
