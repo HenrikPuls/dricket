@@ -141,7 +141,7 @@ func localPublicationRace(output string) bool {
 	lower := strings.ToLower(output)
 	for _, fragment := range []string{
 		"non-fast-forward", "not possible to fast-forward", "cannot lock ref",
-		"index.lock", "but expected",
+		"index.lock", "but expected", "untracked working tree files would be overwritten",
 	} {
 		if strings.Contains(lower, fragment) {
 			return true
