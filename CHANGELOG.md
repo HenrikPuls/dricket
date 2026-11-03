@@ -8,6 +8,8 @@ listed here.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-03
+
 ### Added
 - Collaborative whole-ticket editing: `claim` → `sync` → editor → `commit`;
   `restore` discards selected local edits (ADR-0009).

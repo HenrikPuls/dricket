@@ -6,21 +6,6 @@ top-level CHANGELOG.md and are written at release time from this file.
 
 ## Awaiting verification
 
-- R-13 Public collaborative-editing documentation: README workflow and trust
-  model, static landing page workflow/guardrails/status, unreleased changelog;
-  no new release claimed — handed over 2026-11-03.
-- R-12 Collaborative whole-ticket editing (ADR-0009): `claim` → `sync` →
-  editor → `commit`; `restore` follows git semantics; exact-base CAS rejects
-  stale ticket writes while allowing unrelated commits and comments;
-  structural identity/revision/epoch transition gate replaces role-based
-  history authorization; unknown fields are preserved; `parent` no longer
-  blocks scheduling; accepted pushes are reconciled after lost responses and
-  inconclusive results report `outcome-unknown` (exit 15). Tests: transition
-  tables, real workspace sync/restore/adopt, whole-ticket CLI flow, malformed
-  and stale edits, unrelated remote writes, comment/inbox preservation,
-  accepted-push fault injection and JSON error mapping. Local non-race suites,
-  build, vet, lint and docs checks pass; race requires CI because this Windows
-  environment has no C compiler — handed over 2026-11-03.
 - Skeleton: R-0 — handed over 2026-11-02
 - Infrastructure and Phase 0: public repository published (CI green, rulesets active, Pages live), roadmap and architecture refined — handed over 2026-11-02
 - Spike: R-1 — handed over 2026-11-02
@@ -68,6 +53,23 @@ top-level CHANGELOG.md and are written at release time from this file.
   is `--parent` — handed over 2026-11-03
 
 ## Shipped
+
+### R-13 Collaborative-editing documentation (2026-11-03)
+README workflow and trust model, static landing page workflow, guardrails and
+status, and user-facing release notes for v0.4.0. Documentation checks pass.
+
+### R-12 Collaborative whole-ticket editing (2026-11-03)
+ADR-0009: `claim` → `sync` → editor → `commit`; `restore` follows Git
+semantics; exact-base CAS rejects stale ticket writes while allowing unrelated
+commits and comments; structural identity, revision and epoch transition
+checks replace role-based history authorization; unknown fields are preserved;
+`parent` no longer blocks scheduling; accepted pushes are reconciled after
+lost responses and inconclusive results report `outcome-unknown` (exit 15).
+Tests cover transition tables, real workspace sync/restore/adopt, the
+whole-ticket CLI flow, malformed and stale edits, unrelated remote writes,
+comment/inbox preservation, accepted-push fault injection and JSON error
+mapping. Build, vet, lint, documentation checks and local tests pass; CI race
+tests pass on Linux and macOS.
 
 ### R-3 Leases and checks (2026-11-02)
 Behaviour: stage v1 complete, no on-disk format change, no new exit code
