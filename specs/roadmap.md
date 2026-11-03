@@ -7,7 +7,7 @@ the items below; milestone numbers are not used.
 
 ## Now
 
-Nothing. R-12 and R-13 are implemented and await final verification.
+Nothing.
 
 ## Later
 Each has a trigger; without it nothing is built. See "Deliberately deferred" in docs/CONCEPT.md.
