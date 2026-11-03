@@ -13,11 +13,10 @@ import (
 )
 
 // Init sets up a ticket store the way `git init` sets up a repository:
-// run against a directory, it creates a repository there with the
-// scaffold files committed on main (checked out, so the configuration is
-// directly editable) and an empty seed commit on the ticket branch. The
-// store is then used as remote#tickets. A remote URL instead of a
-// directory is scaffolded by pushing both branches. Existing
+// run against a directory, it creates a repository there with the scaffold
+// files committed on main and an empty seed commit on the ticket branch, which
+// stays checked out. The store is then used as remote#tickets. A remote URL
+// instead of a directory is scaffolded by pushing both branches. Existing
 // repositories and existing branches are refused - the scaffold never
 // overwrites anything.
 func Init(ctx context.Context, opts Options, files map[string]string) error {
@@ -75,9 +74,7 @@ func initDir(ctx context.Context, opts Options, files map[string]string, dir str
 		return err
 	}
 	// Seed the ticket branch: an empty commit on top of an empty tree,
-	// so clones of the store have a head to reset against. Afterwards
-	// main is checked out again - a non-bare repository refuses pushes
-	// to its current branch, and the tool pushes to the ticket branch.
+	// so clones of the store have a head to reset against.
 	if err := run("symbolic-ref", "HEAD", "refs/heads/"+opts.branch()); err != nil {
 		return err
 	}
@@ -87,10 +84,15 @@ func initDir(ctx context.Context, opts Options, files map[string]string, dir str
 	if err := run("-c", "commit.gpgsign=false", "commit", "--quiet", "--allow-empty", "-m", "dricket: seed the ticket branch"); err != nil {
 		return err
 	}
-	if err := run("symbolic-ref", "HEAD", "refs/heads/main"); err != nil {
+	if err := run("reset", "--quiet", "--hard"); err != nil {
 		return err
 	}
-	return run("reset", "--quiet", "--hard")
+	for name := range files {
+		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			return fmt.Errorf("init: remove scaffold from ticket checkout: %w", err)
+		}
+	}
+	return nil
 }
 
 // initRemote scaffolds a remote store by pushing both branches from a

@@ -3,6 +3,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,9 +16,15 @@ func TestCLIInitInDirectory(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "initialized ticket store in") {
 		t.Fatalf("init = %d, %q, %q", code, out, errMsg)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "dricket.toml")); err != nil {
-		t.Fatalf("dricket.toml missing: %v", err)
+	if out, err := exec.Command("git", "-C", dir, "symbolic-ref", "--quiet", "--short", "HEAD").Output(); err != nil || strings.TrimSpace(string(out)) != "tickets" {
+		t.Fatalf("checked-out branch = %q, %v; want tickets", out, err)
 	}
+	if _, err := os.Stat(filepath.Join(dir, "dricket.toml")); !os.IsNotExist(err) {
+		t.Fatalf("dricket.toml must stay on main; stat err = %v", err)
+	}
+
+	// Task 4 removes this intermediate switch when local writes no longer push.
+	runGitCmd(t, dir, "switch", "--quiet", "main")
 
 	// The fresh store works right away.
 	t.Setenv("DK_STORE", dir+"#tickets")
@@ -43,9 +50,23 @@ func TestCLIInitInWorkingDirectory(t *testing.T) {
 		t.Fatalf("init in cwd = %d, %q", code, out)
 	}
 	for _, f := range []string{"dricket.toml", "prefixes.toml", "README.md", "AGENTS.md", "CLAUDE.md"} {
-		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
-			t.Errorf("scaffold missing %s: %v", f, err)
+		if _, err := os.Stat(filepath.Join(dir, f)); !os.IsNotExist(err) {
+			t.Errorf("scaffold %s must remain on main; stat err = %v", f, err)
 		}
+	}
+}
+
+func TestCLIInitCustomBranchChecksOutTicketBranch(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "store")
+	if code, _, errMsg := runForTest(t, "init", "--branch", "work", dir, "app"); code != 0 {
+		t.Fatalf("init = %d, %q", code, errMsg)
+	}
+	out, err := exec.Command("git", "-C", dir, "symbolic-ref", "--quiet", "--short", "HEAD").Output()
+	if err != nil || strings.TrimSpace(string(out)) != "work" {
+		t.Fatalf("checked-out branch = %q, %v; want work", out, err)
+	}
+	if out, err := exec.Command("git", "-C", dir, "show", "main:dricket.toml").Output(); err != nil || !strings.Contains(string(out), `branch = "work"`) {
+		t.Fatalf("main config = %q, %v", out, err)
 	}
 }
 

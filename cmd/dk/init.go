@@ -93,8 +93,8 @@ Read AGENTS.md first. It points at dk guide, which carries the rules.
 }
 
 // runInit implements `dk init [dir-or-url]`: like git init, it sets up a
-// repository in a directory - main checked out with the scaffold, the
-// ticket branch seeded - or pushes both branches to a remote URL.
+// repository in a directory - the ticket branch checked out, the scaffold
+// committed on main - or pushes both branches to a remote URL.
 func runInit(e *env, args []string) (any, *cliError) {
 	fs := newFlagSet("init")
 	branch := fs.String("branch", "tickets", "name of the ticket branch")
@@ -129,6 +129,7 @@ func runInit(e *env, args []string) (any, *cliError) {
 		} else {
 			abs, _ := filepath.Abs(target)
 			e.outf("initialized ticket store in %s\n", abs)
+			e.outf("  checked out branch: %s\n", *branch)
 			if prefix != "" {
 				e.outf("  registered prefix: %s\n", prefix)
 			}

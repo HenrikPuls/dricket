@@ -31,10 +31,14 @@ func TestInitLocalDirLikeGitInit(t *testing.T) {
 		t.Fatalf("init: %v", err)
 	}
 
-	// main is checked out and carries the scaffold.
-	content, err := os.ReadFile(filepath.Join(dir, "dricket.toml")) // #nosec G304 -- test scaffolding in t.TempDir
-	if err != nil || string(content) != "schema_version = 1\n" {
-		t.Fatalf("dricket.toml = %q, %v", content, err)
+	if out := gitOut(t, dir, "symbolic-ref", "--quiet", "--short", "HEAD"); strings.TrimSpace(out) != "tickets" {
+		t.Errorf("checked-out branch = %q; want tickets", out)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "dricket.toml")); !os.IsNotExist(err) {
+		t.Errorf("dricket.toml is on the ticket working tree; stat err = %v", err)
+	}
+	if out := gitOut(t, dir, "show", "main:dricket.toml"); out != "schema_version = 1\n" {
+		t.Errorf("main:dricket.toml = %q", out)
 	}
 	if out := gitOut(t, dir, "log", "--format=%s", "main"); !strings.Contains(out, "dricket: scaffold") {
 		t.Errorf("main log = %q", out)
