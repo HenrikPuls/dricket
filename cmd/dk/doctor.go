@@ -33,6 +33,7 @@ func runDoctor(e *env, args []string) (any, *cliError) {
 	add := func(name string, ok bool, format string, a ...any) {
 		checks = append(checks, docCheck{Name: name, OK: ok, Detail: fmt.Sprintf(format, a...)})
 	}
+	ctx := context.Background()
 
 	// git present and new enough.
 	if major, minor, full, err := gitVersion(); err != nil {
@@ -52,24 +53,22 @@ func runDoctor(e *env, args []string) (any, *cliError) {
 	}
 
 	// Store configuration.
-	spec := e.store
-	if spec == "" {
-		spec = os.Getenv("DK_STORE")
-	}
-	if spec == "" {
-		add("store", false, "no store configured (--store or DK_STORE)")
+	spec, source, cerr := e.storeResolution(ctx)
+	if cerr != nil {
+		add("store", false, "%v", cerr)
+	} else if spec == "" {
+		add("store", false, noStoreHint)
 	} else {
 		remote, branch, _ := strings.Cut(spec, "#")
 		if branch == "" {
 			branch = "tickets"
 		}
-		add("store", true, "%s (branch %s)", remote, branch)
+		add("store", true, "%s (branch %s, from %s)", remote, branch, source)
 
 		s, cerr := e.svc()
 		if cerr != nil {
 			add("remote", false, "%v", cerr)
 		} else {
-			ctx := context.Background()
 			if err := s.Store.Refresh(ctx); err != nil {
 				add("remote", false, "not reachable: %v", err)
 			} else {

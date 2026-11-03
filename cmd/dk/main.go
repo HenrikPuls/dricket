@@ -13,6 +13,7 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+	"sync"
 
 	"github.com/HenrikPuls/dricket/internal/service"
 )
@@ -67,6 +68,15 @@ type env struct {
 	store    string
 	profile  string
 	svcCache *service.Service
+
+	// Project resolution (git-like walk-up), computed once per process.
+	projMu        sync.Mutex
+	projDone      bool
+	projErr       *cliError
+	projSpec      string
+	projSpecSrc   string
+	projPrefix    string
+	projPrefixSrc string
 }
 
 // command is one subcommand of the registry.

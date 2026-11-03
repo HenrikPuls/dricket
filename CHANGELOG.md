@@ -11,6 +11,29 @@ listed here.
 ### Added
 - Design concept (docs/CONCEPT.md) and repository skeleton.
 
+## [0.3.0] - 2026-11-03
+
+### Added
+- Git-like discovery: commands inside the ticket repository work
+  without `--store` or `--prefix` — the tool walks up to the store
+  root (git working tree with `dricket.toml`) and takes remote,
+  branch (`branch` key, new and additive) and a single registered
+  prefix from there (ADR-0008).
+- `dk use`: binds store (`--store <remote>#<branch>`) and project
+  prefix in a `.dricket` file of the current directory, so code
+  repositories resolve their ticket store like the store itself does;
+  plain `dk use` prints the resolution with its sources.
+- `dk init <dir> [prefix]` registers an initial prefix, making `add`
+  work without `--prefix` in a single-project store.
+
+### Changed
+- `add` resolves the project prefix: `--prefix`/`-p`, `DK_PROJECT`,
+  `.dricket`, the single registered prefix, else exit 2 with a hint
+  (the outdated "stage v1" message is gone). `add`'s parent flag is
+  `--parent` now; `-p` is the prefix, matching the concept's CLI
+  table.
+- `setup-agent` and `doctor` resolve the store through the same chain.
+
 ## [0.2.0] - 2026-11-03
 
 ### Changed

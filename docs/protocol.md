@@ -160,6 +160,34 @@ extend, and `validate` then reports `lease-too-long`.
 model and changes only with an ADR. See ADR-0004 for the decisions
 behind this file and the TOML library.
 
+## Resolving the store and project
+
+Inside the ticket repository no configuration is needed: the tool walks
+up from the working directory (like git) to the first *store root* — a
+git working tree whose checkout contains `dricket.toml` — and takes the
+remote (the `origin` URL, or the directory itself for the local stores
+`dk init` creates), the ticket branch (the `branch` key of
+`dricket.toml`, default `tickets`) and, when `prefixes.toml` registers
+exactly one prefix, the project.
+
+In a code repository, `dk use` writes the bindings into a `.dricket`
+file of that directory:
+
+```console
+dk use --store /path/to/store#tickets   # bind the ticket store
+dk use app                              # bind the project prefix
+dk use                                  # print the resolution and its sources
+```
+
+The file is local state: commit it for a team convention, or git-ignore
+it when it carries machine-specific paths.
+
+Precedence — store: `--store`, then `DK_STORE`, then the nearest
+`.dricket` store key, then the nearest store root. Prefix (only `add`
+needs one): `--prefix`/`-p`, then `DK_PROJECT`, then the `.dricket`
+prefix key, then the single registered prefix of `prefixes.toml`;
+without any of them `add` fails with a hint (ADR-0008).
+
 ## Store setup and profiles
 
 - `dk init [dir-or-url]` sets up a store the way `git init` sets up a
@@ -349,8 +377,11 @@ All three guards are configured in dricket.toml (see Configuration).
 
 ## Environment
 
-- `DK_STORE`: the store as `remote[#branch]`; `--store` overrides.
+- `DK_STORE`: the store as `remote[#branch]`; `--store` overrides
+  discovery.
 - `DK_OWNER`: the owner id of this process (default `user@host`).
+- `DK_PROJECT`: the project prefix for `add` (overrides bindings and
+  the single registered prefix; `--prefix` wins over the env).
 - `DK_DATA_DIR`: where private working copies live (default: the user
   cache directory).
 - `DK_PROFILE`: profile selection (with stage v2 profiles).
