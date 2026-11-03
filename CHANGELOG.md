@@ -9,6 +9,9 @@ listed here.
 ## [Unreleased]
 
 ### Added
+- `dk setup-agent` installs the embedded dricket Agent Skill at
+  `.agents/skills/dricket/SKILL.md`, offline and without overwriting a modified
+  skill. `dk guide` remains the version-matched runtime reference.
 - Single-repository local operation: non-bare filesystem stores publish through
   atomic fast-forward ref updates, while remote and bare stores keep push CAS
   (ADR-0010).

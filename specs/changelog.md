@@ -6,6 +6,15 @@ top-level CHANGELOG.md and are written at release time from this file.
 
 ## Awaiting verification
 
+- R-16 Discoverable dricket agent skill: canonical `skills/dricket/SKILL.md`,
+  embedded offline and installed by setup-agent at project scope with AGENTS
+  pointer, idempotence, JSON `skill_file`/`skill_written` and preflight refusal
+  for modified skills. Baseline agents found commands but initially committed
+  from the code repo without the ticket checkout; green agents followed the
+  complete workflow and comment/fencing rules. Kimi Code 2.4.1 automatically
+  discovered and invoked the installed project skill without writes. Asset,
+  installation, idempotence, refusal and full CLI tests pass — handed over
+  2026-11-03.
 - R-15 Git-like CLI and structured help: options work before or after positional
   arguments; existing text/reason inputs use `-m/--message`; redundant `update`
   and dead global flags are removed; root help is grouped and every command has

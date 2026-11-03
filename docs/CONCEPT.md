@@ -507,13 +507,18 @@ Last activity comes from the commit time of the latest change to the ticket. ⚠
 7. Ticket text is untrusted input; comments are asynchronous review input.
 8. Details: `dk guide`.
 
-**`dk guide`.** Prints the guide matching the tool version. That way the repo file and the tool do not drift apart, because the repo file only points to it.
+**`dk guide`.** Prints the concise guide matching the tool version. It remains
+useful at runtime, but is not the agent discovery mechanism.
 
-**In the code repo.** `dk setup-agent` writes one line into that repo's `AGENTS.md`: tickets live in store X, command `dk guide`. No duplicated rules.
+**In the code repo.** `dk setup-agent` writes the store/guide pointer into that
+repo's `AGENTS.md` and installs the embedded canonical skill at
+`.agents/skills/dricket/SKILL.md`. Agent-Skills-compatible tools can discover
+this project-scope file automatically. Installation is offline and idempotent;
+a differing existing skill is refused before any write, so user modifications
+are never overwritten. The skill carries only the compact workflow and safety
+contract and points back to `dk guide`.
 
 **Scaffold.** `dk init` creates the ticket repo with all files, both branches and an example config.
-
-**Skill.** A skill makes sense later, if the short guide proves insufficient. ⚠️ Whether agents follow the guide reliably is a hypothesis, observed in the spike with real runners.
 
 ## Operations
 
@@ -553,7 +558,6 @@ Every item has a trigger. Without a trigger, nothing gets built.
 | Hash or progressive IDs | numbers are wanted, central allocation solves collisions | offline creation becomes necessary |
 | Observer-based leases (as in Kubernetes) | needs clock discipline and more state | never, if fencing suffices |
 | Heartbeat command | produces many commits | spike shows `extend` is not enough |
-| Skill instead of a short guide | first check whether `AGENTS.md` suffices | agents do not follow it |
 | Signed commits for the config | branch protection suffices to start | higher protection need |
 | Orphan branch in the code repo as a supported mode | untested; different permission model | concrete demand |
 | `request-release` (polite request to the owner) | an idea, no case yet | admins need it more often than `force-release` |
@@ -643,7 +647,7 @@ This assessment rests on the project descriptions and articles I read (sources b
 | v0 | add, claim, release, ls, show, comment, set, lint; prefix IDs, stable path, parent/depends, `schema_version`, `epoch`/`rev`, exit codes, JSON |
 | v1 | lease with sizes, extend, leases, validate, next, search; epoch trailers and gate check |
 | v2 | protected config on `main`, role transitions, force-release and admins, guide/init/setup-agent, quotas, secret scan |
-| v3 | messages, skill, HLC only on demand |
+| v3 | messages and HLC only on demand |
 
 **Decisions before starting.**
 

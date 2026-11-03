@@ -165,6 +165,9 @@ Dependabot keeps the pins current.
   rights. Validation proves structural integrity, not actor truthfulness.
 - **Persistence:** only Git. Private working copies are disposable; a user
   checkout with uncommitted edits is not.
+- **Agent integration:** the canonical dricket skill is embedded in the binary;
+  `setup-agent` installs it at project scope without network access and never
+  overwrites a modified skill. `dk guide` remains the runtime reference.
 - **Logging:** stderr messages only; no telemetry; no user content in logs.
 - **Testing:** unit tests for parser, lint and structural transitions;
   exit-code and JSON contract tests; real multi-process concurrency tests;

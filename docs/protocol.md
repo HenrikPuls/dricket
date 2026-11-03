@@ -253,10 +253,12 @@ without any of them `add` fails with a hint (ADR-0008).
   overwrites anything. The scaffold carries dricket.toml with the defaults,
   prefixes.toml, README.md, AGENTS.md, CLAUDE.md and a `.gitattributes` that
   normalizes line endings.
-- `dk setup-agent` writes one pointer line into the AGENTS.md of the
-  current code repository: which store holds the tickets, and that
-  `dk guide` carries the rules. Idempotent; creates AGENTS.md when it is
-  missing.
+- `dk setup-agent` writes the store/guide pointer into the current project's
+  AGENTS.md and installs the embedded canonical skill at
+  `.agents/skills/dricket/SKILL.md`. It works offline, is idempotent and
+  preflights both outputs. A differing existing skill is refused without any
+  write; user content is never overwritten. JSON retains `file`/`written` and
+  adds `skill_file`/`skill_written`.
 - **Profiles** bundle one actor's identity in the user config
   (`<user config dir>/dricket/config.toml`, outside any repository):
 
