@@ -7,7 +7,11 @@ the items below; milestone numbers are not used.
 
 ## Now
 
-Nothing.
+- R-14 Single-repository local operation (owner request): `dk init` checks out
+  the ticket branch; discovery reads configuration from `main` when it is not
+  checked out; local writes use atomic fast-forward ref updates while remote
+  writes keep fast-forward-push CAS. Dirty user checkouts must retain the same
+  protection as in ADR-0009.
 
 ## Later
 Each has a trigger; without it nothing is built. See "Deliberately deferred" in docs/CONCEPT.md.
