@@ -5,11 +5,9 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -315,10 +313,12 @@ type InboxResult struct {
 }
 
 // seenState is the local marker for one ticket; disposable, per store and
-// per owner, never part of the repository.
+// per owner, never part of the repository. Comments holds the base names
+// of the comment files already seen (an old numeric counter in a stale
+// marker simply resets the state).
 type seenState struct {
-	Rev      int `json:"rev"`
-	Comments int `json:"comments"`
+	Rev      int      `json:"rev"`
+	Comments []string `json:"comments,omitempty"`
 }
 
 type inboxState struct {
@@ -350,12 +350,11 @@ func (s *Service) Inbox(ctx context.Context, id string) (InboxResult, error) {
 	}
 
 	commentsDir := strings.TrimSuffix(path, "ticket.md") + "comments"
-	count := 0
-	if files, err := s.Store.List(ctx, commentsDir+"/"); err == nil {
+	var names []string // comment base names; ls order = chronological
+	if files, ferr := s.Store.List(ctx, commentsDir+"/"); ferr == nil {
 		for _, f := range files {
-			n, aerr := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(f, commentsDir+"/"), ".md"))
-			if aerr == nil && n > count {
-				count = n
+			if strings.HasSuffix(f, ".md") {
+				names = append(names, strings.TrimPrefix(f, commentsDir+"/"))
 			}
 		}
 	}
@@ -369,12 +368,17 @@ func (s *Service) Inbox(ctx context.Context, id string) (InboxResult, error) {
 		if d := tk.Rev - seen.Rev; d > 0 {
 			res.NewLog = lastLogLines(tk.Body, d)
 		}
-		for n := seen.Comments + 1; n <= count; n++ {
-			file := fmt.Sprintf("%s/%04d.md", commentsDir, n)
-			res.NewComments = append(res.NewComments, s.readComment(ctx, file))
+		seenFiles := map[string]bool{}
+		for _, n := range seen.Comments {
+			seenFiles[n] = true
+		}
+		for _, n := range names {
+			if !seenFiles[n] {
+				res.NewComments = append(res.NewComments, s.readComment(ctx, commentsDir+"/"+n))
+			}
 		}
 	}
-	state.Tickets[path] = seenState{Rev: tk.Rev, Comments: count}
+	state.Tickets[path] = seenState{Rev: tk.Rev, Comments: names}
 	if err := s.saveInboxState(state); err != nil {
 		return InboxResult{}, err
 	}

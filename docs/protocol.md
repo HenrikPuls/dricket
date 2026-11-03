@@ -25,8 +25,8 @@ The storage triple is `(remote, branch, path)`. The default branch is
 tickets/<prefix>/<shard>/<id>/
   ticket.md
   comments/
-    0001.md
-    0002.md
+    2026-11-03T10-04-24Z-henrik.md
+    2026-11-03T11-30-00Z-bob.md
 ```
 
 - `<id>` is `PREFIX-N`, lower case, for example `app-6842`. The prefix

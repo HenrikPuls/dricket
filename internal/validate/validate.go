@@ -229,9 +229,12 @@ func checkCurrentState(ctx context.Context, st *store.Store, r *report) (map[str
 	return tickets, stages
 }
 
-// checkCommentFile checks the shape of one comment file.
+// checkCommentFile checks the shape of one comment file. Files are named
+// by timestamp and author since v0.2.0 (ADR-0007) and carry no number;
+// the legacy four-digit names of v0.1 stores stay valid when their
+// number field matches.
 func checkCommentFile(ctx context.Context, st *store.Store, p, ticketID string, r *report) {
-	base := p[strings.LastIndexByte(p, '/')+1 : len(p)-3] // 0001
+	base := p[strings.LastIndexByte(p, '/')+1 : len(p)-3] // file name without .md
 	content, err := st.ReadFile(ctx, p)
 	if err != nil {
 		r.add(ticketID, "read-error", "%v", err)
@@ -242,15 +245,47 @@ func checkCommentFile(ctx context.Context, st *store.Store, p, ticketID string, 
 		r.add(ticketID, "unparseable", "comment %s: %v", base, err)
 		return
 	}
-	if v, ok := doc.Get("number"); !ok || v != base {
-		r.add(ticketID, "comment-number-mismatch", "comment %s says number %q", base, v)
-	}
 	if v, ok := doc.Get("ticket"); !ok || v != ticketID {
 		r.add(ticketID, "comment-ticket-mismatch", "comment %s says ticket %q", base, v)
 	}
-	if v, _ := doc.Get("author"); v == "" {
+	author, _ := doc.Get("author")
+	if author == "" {
 		r.add(ticketID, "comment-author-missing", "comment %s has no author", base)
 	}
+	if isLegacyCommentName(base) {
+		if v, ok := doc.Get("number"); !ok || v != base {
+			r.add(ticketID, "comment-number-mismatch", "legacy comment %s says number %q", base, v)
+		}
+		return
+	}
+	// v0.2 naming: the file name must mirror the front matter.
+	created, ok := doc.Get("created_at")
+	if !ok || created == "" {
+		r.add(ticketID, "comment-created-at-missing", "comment %s has no created_at", base)
+		return
+	}
+	t, terr := time.Parse(time.RFC3339, strings.TrimSpace(created))
+	if terr != nil {
+		r.add(ticketID, "comment-created-at-invalid", "comment %s: %v", base, terr)
+		return
+	}
+	expected := t.UTC().Format("2006-01-02T15-04-05Z") + "-" + author
+	if base != expected {
+		r.add(ticketID, "comment-filename-mismatch", "file %s does not match front matter (expected %s)", base, expected)
+	}
+}
+
+// isLegacyCommentName reports whether base is a v0.1 four-digit number.
+func isLegacyCommentName(base string) bool {
+	if len(base) != 4 {
+		return false
+	}
+	for _, ch := range base {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // checkReferences verifies depends and parent and finds cycles.
