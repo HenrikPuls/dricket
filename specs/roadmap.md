@@ -12,6 +12,13 @@ the items below; milestone numbers are not used.
   checked out; local writes use atomic fast-forward ref updates while remote
   writes keep fast-forward-push CAS. Dirty user checkouts must retain the same
   protection as in ADR-0009.
+- R-15 Git-like CLI and structured help (owner request): adjust existing text
+  flags, positional syntax and global options; remove the redundant update
+  command and dead global flags; group root help and provide per-command help.
+  No new ticket functionality.
+- R-16 Discoverable dricket agent skill (owner request): ship a canonical
+  cross-runtime SKILL.md and install it through the existing setup-agent
+  command without network access or overwriting user modifications.
 
 ## Later
 Each has a trigger; without it nothing is built. See "Deliberately deferred" in docs/CONCEPT.md.
