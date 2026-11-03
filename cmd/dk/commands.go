@@ -132,7 +132,38 @@ func newFlagSet(name string) *flag.FlagSet {
 
 // parseFlags parses after the command has defined its flags.
 func parseFlags(fs *flag.FlagSet, args []string) *cliError {
-	if err := fs.Parse(args); err != nil {
+	var options, positional []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			positional = append(positional, args[i+1:]...)
+			break
+		}
+		if a == "-" || !strings.HasPrefix(a, "-") {
+			positional = append(positional, a)
+			continue
+		}
+		name := a
+		if eq := strings.IndexByte(name, '='); eq >= 0 {
+			name = name[:eq]
+		}
+		registered := fs.Lookup(strings.TrimLeft(name, "-"))
+		options = append(options, a)
+		if registered == nil || strings.Contains(a, "=") {
+			continue
+		}
+		if boolean, ok := registered.Value.(interface{ IsBoolFlag() bool }); ok && boolean.IsBoolFlag() {
+			continue
+		}
+		if i+1 >= len(args) {
+			return usageError("%s: %s requires a value (see --help)", fs.Name(), a)
+		}
+		i++
+		options = append(options, args[i])
+	}
+	ordered := append(options, "--")
+	ordered = append(ordered, positional...)
+	if err := fs.Parse(ordered); err != nil {
 		return usageError("%s: %v (see --help)", fs.Name(), err)
 	}
 	return nil
