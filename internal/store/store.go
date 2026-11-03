@@ -83,12 +83,15 @@ func (o *Options) fillDefaults() {
 	}
 }
 
+type gitRunnerFunc func(context.Context, ...string) (string, string, error)
+
 // Store is a private working copy plus the git access around it. It is not
 // safe for concurrent use; processes and profiles each get their own.
 type Store struct {
 	opts            Options
 	dir             string
 	gitConfigGlobal string // empty = ambient user configuration applies
+	gitRunner       gitRunnerFunc
 	sleep           func(time.Duration)
 	hasRef          bool // remote branch existed at the last fetch
 	rand            *rand.Rand
@@ -183,6 +186,13 @@ func (s *Store) initOnce(ctx context.Context) error {
 // git runs one git command in the working copy. Arguments are a list; no
 // shell is involved, and nothing from ticket content reaches them.
 func (s *Store) git(ctx context.Context, args ...string) (string, string, error) {
+	if s.gitRunner != nil {
+		return s.gitRunner(ctx, args...)
+	}
+	return s.execGit(ctx, args...)
+}
+
+func (s *Store) execGit(ctx context.Context, args ...string) (string, string, error) {
 	full := append([]string{"-C", s.dir, "-c", "core.autocrlf=false"}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...) // #nosec G204 -- args are tool-built constants and validated paths (ADR-0002)
 	cmd.Env = append(os.Environ(), s.opts.Profile.Env(s.gitConfigGlobal)...)

@@ -398,6 +398,70 @@ func TestSafePath(t *testing.T) {
 	}
 }
 
+func TestWriteUnknownOutcomeReconciled(t *testing.T) {
+	bare := setupBare(t, true)
+	s := openStore(t, bare, "alice", nil)
+	realGit := s.execGit
+	pushes, mutations := 0, 0
+	s.gitRunner = func(ctx context.Context, args ...string) (string, string, error) {
+		out, stderr, err := realGit(ctx, args...)
+		if args[0] == "push" {
+			pushes++
+			if err == nil {
+				return out, "connection lost after accept", errors.New("response lost")
+			}
+		}
+		return out, stderr, err
+	}
+	err := s.Write(context.Background(), WriteSpec{
+		Message: "accepted but unknown",
+		Mutate: func(w Worktree) error {
+			mutations++
+			return w.WriteFile("tickets/once.txt", "once")
+		},
+	})
+	if err != nil {
+		t.Fatalf("reconciled write: %v", err)
+	}
+	if pushes != 1 || mutations != 1 {
+		t.Fatalf("pushes=%d mutations=%d, want 1/1", pushes, mutations)
+	}
+	if got := bareFile(t, bare, "tickets", "tickets/once.txt"); got != "once" {
+		t.Fatalf("remote file = %q", got)
+	}
+}
+
+func TestWriteUnknownOutcomeRemainsUnknown(t *testing.T) {
+	bare := setupBare(t, true)
+	s := openStore(t, bare, "alice", nil)
+	realGit := s.execGit
+	accepted := false
+	pushes := 0
+	s.gitRunner = func(ctx context.Context, args ...string) (string, string, error) {
+		if accepted && args[0] == "fetch" {
+			return "", "still offline", errors.New("reconciliation unavailable")
+		}
+		out, stderr, err := realGit(ctx, args...)
+		if args[0] == "push" {
+			pushes++
+			if err == nil {
+				accepted = true
+				return out, "connection lost after accept", errors.New("response lost")
+			}
+		}
+		return out, stderr, err
+	}
+	err := s.Write(context.Background(), writeFileSpec("tickets/unknown.txt", "unknown", nil))
+	var writeErr *WriteError
+	if !errors.As(err, &writeErr) || writeErr.Outcome != PushUnknown {
+		t.Fatalf("err = %v, want PushUnknown", err)
+	}
+	remoteCommit := strings.TrimSpace(runGit(t, bare, "rev-parse", "tickets"))
+	if writeErr.Commit != remoteCommit || pushes != 1 {
+		t.Fatalf("commit=%q remote=%q pushes=%d", writeErr.Commit, remoteCommit, pushes)
+	}
+}
+
 func TestRetryablePush(t *testing.T) {
 	cases := map[string]bool{
 		" ! [rejected]        HEAD -> tickets (non-fast-forward)":                                                          true,

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -59,6 +60,9 @@ const (
 	PushFailed
 	// Timeout means the retry budget was exhausted without a decision.
 	Timeout
+	// PushUnknown means a transport failure left acceptance unknown and
+	// reconciliation could not prove whether the commit landed.
+	PushUnknown
 )
 
 func (o Outcome) String() string {
@@ -73,6 +77,8 @@ func (o Outcome) String() string {
 		return "push failed"
 	case Timeout:
 		return "timeout"
+	case PushUnknown:
+		return "push outcome unknown"
 	}
 	return "unknown"
 }
@@ -82,6 +88,7 @@ type WriteError struct {
 	Outcome    Outcome
 	Attempts   int
 	PushReject int // pushes rejected as non-fast-forward before the end
+	Commit     string
 	Err        error
 	PushStderr string
 }
@@ -152,6 +159,13 @@ func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 			werr.Err = fmt.Errorf("git commit: %s", firstLine(stderr))
 			return werr
 		}
+		commit, err := s.HeadSHA(ctx)
+		if err != nil {
+			werr.Outcome = MutationFailed
+			werr.Err = fmt.Errorf("read commit id: %w", err)
+			return werr
+		}
+		werr.Commit = commit
 		_, pushStderr, err := s.git(ctx, "push", "--quiet", "origin",
 			fmt.Sprintf("HEAD:refs/heads/%s", s.opts.branch()))
 		if err == nil {
@@ -160,6 +174,17 @@ func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 		if !retryablePush(pushStderr) {
 			werr.Outcome = PushFailed
 			werr.PushStderr = pushStderr
+			if definitePushFailure(pushStderr) {
+				return werr
+			}
+			accepted, reconcileErr := s.reconcilePush(ctx, commit)
+			if accepted {
+				return nil
+			}
+			if reconcileErr != nil {
+				werr.Outcome = PushUnknown
+				werr.Err = fmt.Errorf("%s; reconciliation failed: %w", firstLine(pushStderr), reconcileErr)
+			}
 			return werr
 		}
 		// Rejected as non-fast-forward: back off, then start over from a
@@ -173,11 +198,40 @@ func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 	return &WriteError{Outcome: Timeout}
 }
 
-// retryablePush separates "someone pushed first" (try again) from
-// everything else (rights, protection, network), as the concept demands:
-// an agent must not wait on an error that never goes away. Three messages
-// mean the same race, two from the client side and one from the server
-// side when it loses the compare-and-swap on the ref lock.
+func definitePushFailure(stderr string) bool {
+	lower := strings.ToLower(stderr)
+	for _, fragment := range []string{
+		"authentication failed", "permission denied", "protected branch",
+		"pre-receive hook declined", "remote rejected", "repository not found",
+		"could not read from remote repository", " 401", " 403",
+	} {
+		if strings.Contains(lower, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Store) reconcilePush(ctx context.Context, commit string) (bool, error) {
+	if err := s.fetch(ctx); err != nil {
+		return false, err
+	}
+	if !s.hasRef {
+		return false, nil
+	}
+	_, _, err := s.git(ctx, "merge-base", "--is-ancestor", commit, "FETCH_HEAD")
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, err
+}
+
+// retryablePush identifies only a concurrent-ref race. Definite authorization
+// failures stop; transport failures are reconciled against the recorded commit.
 func retryablePush(stderr string) bool {
 	return strings.Contains(stderr, "non-fast-forward") ||
 		strings.Contains(stderr, "fetch first") ||

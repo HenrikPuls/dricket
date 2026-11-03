@@ -32,24 +32,25 @@ const (
 
 // Error kinds, one per documented exit code; the CLI maps them directly.
 const (
-	KindNotFound   = "not-found"  // 10
-	KindClaimed    = "claimed"    // 11
-	KindConflict   = "conflict"   // 12
-	KindClaimLost  = "claim-lost" // 13
-	KindInvalid    = "invalid"    // 14
-	KindNetwork    = "network"    // 15
-	KindTooOld     = "too-old"    // 16
-	KindForbidden  = "forbidden"  // 17
-	KindQuota      = "quota"      // 18
-	KindSecret     = "secret"     // 19
-	KindError      = "error"      // 1
-	KindUnexpected = "unexpected"
+	KindNotFound       = "not-found"       // 10
+	KindClaimed        = "claimed"         // 11
+	KindConflict       = "conflict"        // 12
+	KindClaimLost      = "claim-lost"      // 13
+	KindInvalid        = "invalid"         // 14
+	KindNetwork        = "network"         // 15
+	KindOutcomeUnknown = "outcome-unknown" // 15
+	KindTooOld         = "too-old"         // 16
+	KindForbidden      = "forbidden"       // 17
+	KindQuota          = "quota"           // 18
+	KindSecret         = "secret"          // 19
+	KindError          = "error"           // 1
+	KindUnexpected     = "unexpected"
 )
 
 var kindCodes = map[string]int{
 	KindNotFound: 10, KindClaimed: 11, KindConflict: 12, KindClaimLost: 13,
-	KindInvalid: 14, KindNetwork: 15, KindTooOld: 16, KindForbidden: 17,
-	KindQuota: 18, KindSecret: 19, KindError: 1,
+	KindInvalid: 14, KindNetwork: 15, KindOutcomeUnknown: 15, KindTooOld: 16,
+	KindForbidden: 17, KindQuota: 18, KindSecret: 19, KindError: 1,
 }
 
 // Error is a service failure with the exit code it maps to.
@@ -72,7 +73,7 @@ func ExitCode(err error) int {
 	var we *store.WriteError
 	if errors.As(err, &we) {
 		switch we.Outcome {
-		case store.PushFailed, store.Timeout:
+		case store.PushFailed, store.Timeout, store.PushUnknown:
 			return 15
 		default:
 			return 1
@@ -89,6 +90,9 @@ func KindOf(err error) string {
 	}
 	var we *store.WriteError
 	if errors.As(err, &we) {
+		if we.Outcome == store.PushUnknown {
+			return KindOutcomeUnknown
+		}
 		return KindNetwork
 	}
 	return KindError
