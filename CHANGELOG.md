@@ -11,6 +11,17 @@ listed here.
 ### Added
 - Design concept (docs/CONCEPT.md) and repository skeleton.
 
+## [0.1.1] - 2026-11-03
+
+### Fixed
+- `version` reported "dev" for binaries installed through
+  `go install ...@vX`; the module version from the build info is
+  reported now (release builds keep their ldflags values, injected
+  as `v{{.Version}}` for a uniform display).
+- Install documentation: `go install` installs the binary under its
+  package name `dricket`; the `dk` alias ships in the release
+  archives or can be copied/symlinked.
+
 ## [0.1.0] - 2026-11-02
 
 First release. Stages v0 to v2 of docs/CONCEPT.md are implemented.
