@@ -29,9 +29,10 @@ in-progress, review, done, blocked, needs-input, cancelled); what the
 config governs is which stage moves each role may perform. Human and
 admin roles stay fixed (they may move anything), as the concept fixes
 them. The per-field schema stays in code (`internal/ticket`); making it
-data-driven has no user-visible benefit today. `grace` is deliberately
-not configurable — it is part of the fencing model and changes only
-with an ADR.
+data-driven has no user-visible benefit today. ADR-0009 later removes
+role-based transitions from the integrity contract; the legacy config key
+remains parseable for compatibility. `grace` is deliberately not
+configurable — it is part of the fencing model and changes only with an ADR.
 
 ### 3. Three exit codes are added
 

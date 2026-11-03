@@ -1,9 +1,7 @@
 # dricket — Architecture (arc42, lean)
 
-Status of this document: describes the intended system. No code exists yet;
-the building blocks below are planned names and may change. From the first
-release on it describes the current system and is updated whenever a building
-block, an interface or a cross-component flow changes. The detailed
+Status of this document: describes the current system and is updated whenever
+a building block, an interface or a cross-component flow changes. The detailed
 specification and the reasoning are in [CONCEPT.md](CONCEPT.md).
 
 ## 1. Introduction and goals
@@ -51,9 +49,9 @@ holds ticket files and the protected configuration.
 
 - Claims, IDs and writes are pushes to one branch (ADR-0001).
 - Two branches with different rights: protected `main` (config), writable `tickets`.
-- State belongs to the tool; identity is immutable; free fields are validated.
-- Leases by size and an `epoch` as fencing token, instead of heartbeats.
-- A declarative schema with path rules, checked over the diff of each commit.
+- Trusted collaborators edit whole tickets; identity and coordination invariants are validated.
+- Leases by size and an `epoch` as cooperative fencing token, instead of heartbeats.
+- Structural snapshot and transition rules are checked over each commit diff.
 - Go and a static binary (ADR-0002).
 
 ## 5. Building block view (static)
@@ -63,9 +61,9 @@ holds ticket files and the protected configuration.
 ```mermaid
 flowchart TB
   CLI[cmd/dk: commands, flags, output] --> Svc[internal/service: use cases]
-  Svc --> Model[internal/ticket: model, transitions]
+  Svc --> Model[internal/ticket: model, structural transitions]
   Svc --> FM[internal/frontmatter: parser, lint]
-  Svc --> Store[internal/store: git subprocess, retry, working copy]
+  Svc --> Store[internal/store: git subprocess, retry, private store and user workspace]
   Svc --> Val[internal/validate: schema, path rules, diff checks]
   Svc --> Prof[internal/profile: identity, credentials]
   Store --> Prof
@@ -74,12 +72,12 @@ flowchart TB
 | Component | Responsibility | Owns (path) |
 |---|---|---|
 | CLI | Parse arguments, print data and messages, map errors to exit codes | `cmd/dk/` |
-| service | One function per use case (claim, release, extend, ...) | `internal/service/` |
-| ticket | Ticket model, field classes, stage transitions per role | `internal/ticket/` |
-| config | dricket.toml: lease limits, admins, quota, transitions | `internal/config/` |
+| service | One function per use case (claim, sync-backed commit, release, extend, ...) | `internal/service/` |
+| ticket | Ticket model and structural transition invariants | `internal/ticket/` |
+| config | dricket.toml: lease limits, admins, quota, command policies | `internal/config/` |
 | frontmatter | Strict parser for the flat front matter, lint | `internal/frontmatter/` |
-| store | Git as subprocess, fetch/commit/push loop, backoff, private working copy | `internal/store/` |
-| validate | Schema and path rules, immutability over the commit diff | `internal/validate/` |
+| store | Git subprocess, CAS loop, private store and safe user workspace | `internal/store/` |
+| validate | Structural and path rules over snapshots and commit diffs | `internal/validate/` |
 | profile | Git identity and credential source per profile | `internal/profile/` |
 
 ### 5.2 Level 2
@@ -108,7 +106,28 @@ sequenceDiagram
 ### 6.2 Write by a former owner (fencing)
 The runner's next write fetches the head and checks `owner == me && epoch ==
 mine`. If the claim was taken over, the write is refused with exit 13 and the
-runner stops. Local changes are kept.
+runner stops. Local changes are kept. This is cooperative fencing and does
+not stop external side effects.
+
+### 6.3 Whole-ticket edit
+
+```mermaid
+sequenceDiagram
+  participant U as User checkout
+  participant D as dk private store
+  participant R as Git remote
+  U->>U: sync clean checkout, then edit ticket.md
+  U->>D: commit(id): exact base and edited content
+  D->>R: fetch fresh head
+  D->>D: require remote ticket == base; owner and structural transition valid
+  D->>R: commit and fast-forward push
+  R-->>D: accepted
+  D-->>U: adopt accepted commit only if published file is still the sole dirty path
+```
+
+A remote comment or unrelated ticket change does not invalidate the exact
+ticket base. A remote change to the same ticket returns exit 12 and leaves
+the user edit untouched.
 
 ## 7. Deployment view
 
@@ -129,19 +148,22 @@ Dependabot keeps the pins current.
 
 ## 8. Cross-cutting concepts
 
-- **Errors:** every failure maps to a documented exit code (see CONCEPT.md).
+- **Errors:** every failure maps to a documented exit code; transport errors
+  distinguish definite failure from an unknown push outcome (exit 15).
 - **Configuration:** flags, then environment, then project, then user file;
   profiles live in the user file outside any repository.
-- **Security:** ticket text is untrusted; no shell strings; ref names checked;
-  size limits; branch-level rights on the host; edits around the tool are
-  detected by `validate`, not prevented.
-- **Persistence:** only Git. The private working copy is disposable.
+- **Consistency:** accepted pushes on one ref are ordered; reads are fetched
+  snapshots; no cross-branch, cross-repository or external atomicity.
+- **Security:** repository writers are trusted collaborators. Ticket text is
+  untrusted; no shell strings; ref names checked; size limits; host branch
+  rights. Validation proves structural integrity, not actor truthfulness.
+- **Persistence:** only Git. Private working copies are disposable; a user
+  checkout with uncommitted edits is not.
 - **Logging:** stderr messages only; no telemetry; no user content in logs.
-- **Testing:** unit tests for the parser, lint, validate and state
-  transitions; exit-code and JSON contract tests; multi-process concurrency
-  tests against a local bare repo with invariants at zero; a fuzz test for
-  the front-matter parser. The throwaway spike harness lives under `spike/`
-  only and is not part of the product.
+- **Testing:** unit tests for parser, lint and structural transitions;
+  exit-code and JSON contract tests; real multi-process concurrency tests;
+  whole-file editing, comment and unknown-push regressions; front-matter
+  fuzzing. The throwaway spike harness lives under `spike/` only.
 
 ## 9. Architecture decisions
 Index only; details in `docs/adr/`.
@@ -156,6 +178,7 @@ Index only; details in `docs/adr/`.
 | [0006](adr/0006-next-orders-by-priority.md) | next orders by priority first | accepted |
 | [0007](adr/0007-comment-naming.md) | Comments named by timestamp and author | accepted |
 | [0008](adr/0008-discovery-and-project-resolution.md) | Git-like store discovery and project resolution | accepted |
+| [0009](adr/0009-collaborative-whole-ticket-editing.md) | Collaborative whole-ticket editing | accepted |
 
 ## 10. Quality requirements
 
@@ -163,8 +186,16 @@ Index only; details in `docs/adr/`.
 |---|---|---|
 | Exclusivity | 10 clones claim and release random tickets for 10 minutes | 0 tickets with two owners, 0 duplicate IDs, 0 lost updates |
 | Safety | A runner with an expired lease writes after a takeover | write refused, exit 13 |
-| Readability | A person edits a free field in an editor | `dk lint` accepts it or names the line |
+| Integrity | A collaborator edits identity or claim fields inconsistently | `dk commit` rejects the transition; history validation reports direct writes |
+| Preservation | A commit fails or the same ticket changes remotely | local edits remain untouched; exit 12 for a same-ticket conflict |
+| Collaboration | A comment lands during a claimed ticket edit | commit succeeds and preserves both comment and edit |
+| Readability | A person edits a whole ticket in an editor | `dk commit` accepts valid content or names the invalid field |
 | Operability | A fresh runner installs the binary | works with only `git` present |
+
+Performance claims require measurements at the real host: p50/p95/p99 and
+final-failure rates per write, interactive reads at representative ticket
+counts, fetch size, and full-history validation time and memory. Local
+correctness spikes do not establish those thresholds.
 
 ## 11. Risks and technical debt
 

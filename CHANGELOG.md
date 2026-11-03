@@ -9,7 +9,22 @@ listed here.
 ## [Unreleased]
 
 ### Added
-- Design concept (docs/CONCEPT.md) and repository skeleton.
+- Collaborative whole-ticket editing: `claim` → `sync` → editor → `commit`;
+  `restore` discards selected local edits (ADR-0009).
+- Exact-base CAS for edited tickets, preserving local work on conflicts and
+  allowing unrelated commits and separate comments during a claim.
+- Unknown-push reconciliation using the recorded commit; inconclusive results
+  report `outcome-unknown` with exit 15.
+
+### Changed
+- Validation enforces document, identity, revision, epoch and ownership
+  integrity rather than per-field authorization or role-based history policy.
+- Unknown front-matter fields survive tool writes; `parent` is hierarchy only,
+  while `depends` controls scheduling.
+
+### Fixed
+- Checkout adoption refuses unrelated dirty files and unpushed or divergent
+  local commits instead of discarding them.
 
 ## [0.3.0] - 2026-11-03
 

@@ -7,8 +7,7 @@ the items below; milestone numbers are not used.
 
 ## Now
 
-Nothing. v0.1.0 is released (stages v0 to v2); the remaining items below
-wait for their trigger.
+Nothing. R-12 and R-13 are implemented and await final verification.
 
 ## Later
 Each has a trigger; without it nothing is built. See "Deliberately deferred" in docs/CONCEPT.md.

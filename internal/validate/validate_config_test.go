@@ -64,14 +64,13 @@ func TestValidateLeaseMaxFromConfig(t *testing.T) {
 	}
 }
 
-func TestValidateHonoursTransitionOverride(t *testing.T) {
+func TestValidateDoesNotApplyTransitionPolicyToHistory(t *testing.T) {
 	bare := setupBare(t)
 	svc := openSvc(t, bare, "alice")
 	ctx := context.Background()
 
-	// A legal history under the defaults: add-claim (open ->
-	// in-progress) and release to review. Then the store forbids review
-	// for agents, and validate must flag the past move as illegal now.
+	// A legal structural history: add-claim and release to review. A later
+	// legacy role policy must not retroactively invalidate that history.
 	if _, err := svc.Add(ctx, service.AddRequest{Prefix: "app", Title: "watch me"}); err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -87,11 +86,11 @@ in-progress = ["open", "blocked"]
 	if err != nil {
 		t.Fatalf("validate: %v", err)
 	}
-	if !kindsOf(findings, "app-1")["illegal-transition"] {
+	if kindsOf(findings, "app-1")["illegal-transition"] {
 		for _, f := range findings {
 			t.Logf("finding: %s", f)
 		}
-		t.Fatal("no illegal-transition finding for the overridden table")
+		t.Fatal("legacy role policy invalidated structurally legal history")
 	}
 }
 

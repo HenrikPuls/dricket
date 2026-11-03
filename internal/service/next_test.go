@@ -106,6 +106,18 @@ func TestNextEligibility(t *testing.T) {
 	}
 }
 
+func TestNextParentDoesNotBlockButDependencyDoes(t *testing.T) {
+	stages := map[string]ticket.Stage{"app-1": ticket.StageOpen, "app-2": ticket.StageOpen, "app-3": ticket.StageOpen}
+	child := ticket.Ticket{ID: "app-2", Stage: ticket.StageOpen, Parent: "app-1"}
+	if !eligible(child, stages, time.Now()) {
+		t.Fatal("open parent blocked its child")
+	}
+	dependent := ticket.Ticket{ID: "app-3", Stage: ticket.StageOpen, Parent: "app-1", Depends: []string{"app-1"}}
+	if eligible(dependent, stages, time.Now()) {
+		t.Fatal("unfinished dependency did not block")
+	}
+}
+
 func TestNextClaim(t *testing.T) {
 	bare := setupBare(t)
 	ctx := context.Background()
