@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -383,8 +382,12 @@ func setResult(body, text string) string {
 
 // -------------------------------------------------------- comment ----
 
-// Comment appends a comment as a new, add-only file. The number is
-// allocated per ticket by push retry, like ticket ids.
+// Comment appends a comment as a new, add-only file. Everyone may
+// comment; the file name is the UTC timestamp plus the author — no
+// running number — so two comments collide only when the same author
+// writes twice in the same second, and the allocation resolves that by
+// trying the next second inside the precondition (docs/CONCEPT.md,
+// "Comments"; ADR-0007).
 func (s *Service) Comment(ctx context.Context, id, text string) (string, error) {
 	id = strings.ToLower(strings.TrimSpace(id))
 	path, err := PathFor(id)
@@ -405,27 +408,27 @@ func (s *Service) Comment(ctx context.Context, id, text string) (string, error) 
 	spec := store.WriteSpec{
 		Message: "dricket: comment on " + id,
 		Check: func(h store.Head) error {
-			files, err := h.List(dir + "/")
-			if err != nil {
-				return err
-			}
-			highest := 0
-			for _, f := range files {
-				name := strings.TrimSuffix(strings.TrimPrefix(f, dir+"/"), ".md")
-				if n, err := strconv.Atoi(name); err == nil && n > highest {
-					highest = n
-				}
-			}
-			file = fmt.Sprintf("%s/%04d.md", dir, highest+1)
 			now := s.Now()
-			content = fmt.Sprintf("---\nticket: %s\nnumber: %04d\nauthor: %s\ncreated_at: %s\n---\n\n%s\n",
-				id, highest+1, s.Owner, now.UTC().Format(time.RFC3339), text)
-			if has, err := h.Has(file); err != nil {
-				return err
-			} else if has {
-				return errf(KindConflict, "comment file %s already exists", file)
+			// Successive seconds until a free, unique file name: the
+			// only possible collision is the same author in the same
+			// second, and the retry loop resolves it without a second
+			// push.
+			for i := 0; i < 8; i++ {
+				stamp := now.Add(time.Duration(i) * time.Second).UTC()
+				candidate := dir + "/" + commentFileName(stamp, s.Owner)
+				has, herr := h.Has(candidate)
+				if herr != nil {
+					return herr
+				}
+				if has {
+					continue
+				}
+				file = candidate
+				content = fmt.Sprintf("---\nticket: %s\nauthor: %s\ncreated_at: %s\n---\n\n%s\n",
+					id, s.Owner, stamp.Format(time.RFC3339), text)
+				return nil
 			}
-			return nil
+			return errf(KindConflict, "could not allocate a comment file name for %s within 8 seconds", id)
 		},
 		Mutate: func(w store.Worktree) error {
 			return w.WriteFile(file, content)
@@ -435,6 +438,22 @@ func (s *Service) Comment(ctx context.Context, id, text string) (string, error) 
 		return "", err
 	}
 	return file, nil
+}
+
+// commentFileName renders the add-only comment file name: UTC timestamp
+// without colons (Windows-safe) plus the author, e.g.
+// 2026-11-03T10-04-24Z-henrik.md.
+func commentFileName(t time.Time, author string) string {
+	var b strings.Builder
+	for _, r := range author {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-', r == '.', r == '@', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	return t.UTC().Format("2006-01-02T15-04-05Z") + "-" + b.String() + ".md"
 }
 
 // ------------------------------------------------------------- set ----

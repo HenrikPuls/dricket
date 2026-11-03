@@ -5,6 +5,7 @@ import (
 	"context"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,8 +117,9 @@ func kindsOf(findings []Finding, id string) map[string]bool {
 
 // buildLegalHistory creates a busy but legal ticket history: add, claim,
 // note, comment, extend, release with result, a second ticket, a takeover
-// after lease expiry, and a re-claim.
-func buildLegalHistory(t *testing.T, bare string) {
+// after lease expiry, and a re-claim. It returns the path of bob's
+// comment file.
+func buildLegalHistory(t *testing.T, bare string) string {
 	t.Helper()
 	ctx := context.Background()
 	alice := openSvc(t, bare, "alice")
@@ -136,7 +138,8 @@ func buildLegalHistory(t *testing.T, bare string) {
 	if _, err := alice.Extend(ctx, id1, "tests take longer"); err != nil {
 		t.Fatalf("extend: %v", err)
 	}
-	if _, err := bob.Comment(ctx, id1, "cannot reproduce on macOS"); err != nil {
+	commentPath, err := bob.Comment(ctx, id1, "cannot reproduce on macOS")
+	if err != nil {
 		t.Fatalf("comment: %v", err)
 	}
 	if _, err := alice.Release(ctx, id1, ticket.StageReview, "fix on dk/app-1"); err != nil {
@@ -163,6 +166,7 @@ func buildLegalHistory(t *testing.T, bare string) {
 	if !res.Takeover {
 		t.Fatalf("expected a takeover, got %+v", res)
 	}
+	return commentPath
 }
 
 func TestValidateCleanHistory(t *testing.T) {
@@ -191,10 +195,20 @@ func TestValidateDetectsManipulations(t *testing.T) {
 	rewrite(t, bare, "app-1", func(tk *ticket.Ticket) { tk.Stage = ticket.StageDone })
 	// Dangling depends on the other ticket.
 	rewrite(t, bare, "app-2", func(tk *ticket.Ticket) { tk.Depends = []string{"app-99"} })
-	// Comment rewritten.
-	comment := "tickets/app/0000/app-1/comments/0001.md"
-	rewriteFile(t, bare, comment,
-		"---\nticket: app-1\nnumber: 0001\nauthor: bob\ncreated_at: 2026-11-02T10:00:00Z\n---\n\ntampered\n")
+	// Comment rewritten: same front matter, tampered body — exactly the
+	// edit that v0.2 naming must catch as an M on an add-only file.
+	comment := runGit(t, bare, "ls-tree", "-r", "--name-only", "tickets")
+	var commentPath string
+	for _, l := range strings.Split(comment, "\n") {
+		if strings.Contains(l, "/comments/") && strings.HasSuffix(l, "-bob.md") {
+			commentPath = strings.TrimSpace(l)
+		}
+	}
+	if commentPath == "" {
+		t.Fatal("bob's comment file not found")
+	}
+	content := runGit(t, bare, "show", "tickets:"+commentPath)
+	rewriteFile(t, bare, commentPath, strings.Replace(content, "cannot reproduce", "REWRITTEN by mallory", 1))
 
 	svc := openSvc(t, bare, "auditor")
 	findings, err := Store(context.Background(), svc.Store)
@@ -250,7 +264,8 @@ func TestValidateDetectsDeletionAroundTheTool(t *testing.T) {
 	ctx := context.Background()
 	alice := openSvc(t, bare, "alice")
 	id, _ := alice.Add(ctx, service.AddRequest{Prefix: "app", Title: "with comment", Unclaimed: true})
-	if _, err := alice.Comment(ctx, id, "please keep me"); err != nil {
+	commentPath, err := alice.Comment(ctx, id, "please keep me")
+	if err != nil {
 		t.Fatalf("comment: %v", err)
 	}
 
@@ -258,7 +273,7 @@ func TestValidateDetectsDeletionAroundTheTool(t *testing.T) {
 	// around the tool would.
 	clone := filepath.Join(t.TempDir(), "clone")
 	runGit(t, filepath.Dir(clone), "clone", "--quiet", bare, clone)
-	runGit(t, clone, "rm", "-q", "tickets/app/0000/app-1/comments/0001.md")
+	runGit(t, clone, "rm", "-q", commentPath)
 	runGit(t, clone, "-c", "user.name=deleter", "-c", "user.email=d@invalid",
 		"commit", "--quiet", "-m", "remove comment")
 	runGit(t, clone, "push", "--quiet", "origin", "HEAD:refs/heads/tickets")

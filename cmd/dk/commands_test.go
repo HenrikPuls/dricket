@@ -65,7 +65,7 @@ func TestCLIHappyPath(t *testing.T) {
 	}
 
 	code, out, errMsg = runForTest(t, "comment", "app-1", "first comment")
-	if code != 0 || !strings.Contains(out, "comments/0001.md") {
+	if code != 0 || !strings.Contains(out, "/comments/") || !strings.HasSuffix(strings.TrimSpace(out), "-cli-tester.md") {
 		t.Fatalf("comment = %d, %q, %q", code, out, errMsg)
 	}
 

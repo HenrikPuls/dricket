@@ -1,5 +1,6 @@
 # GoReleaser v2 configuration.
-# Assumes the entry point is ./cmd/dricket (see AGENTS.md).
+# The entry point is ./cmd/dk; the program ships under the single name
+# `dk` (see AGENTS.md and the README install section).
 version: 2
 project_name: dricket
 
@@ -8,19 +9,8 @@ before:
     - go mod tidy
 
 builds:
-  - id: dricket
-    main: ./cmd/dricket
-    binary: dricket
-    env: [CGO_ENABLED=0]
-    goos: [linux, darwin, windows]
-    goarch: [amd64, arm64]
-    flags: [-trimpath]
-    ldflags:
-      - -s -w -X main.version=v{{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
-    mod_timestamp: '{{ .CommitTimestamp }}'
-  # The short alias `dk` is the same program under a second name.
   - id: dk
-    main: ./cmd/dricket
+    main: ./cmd/dk
     binary: dk
     env: [CGO_ENABLED=0]
     goos: [linux, darwin, windows]
@@ -32,7 +22,7 @@ builds:
 
 archives:
   - id: default
-    ids: [dricket, dk]
+    ids: [dk]
     formats: [tar.gz]
     format_overrides:
       - goos: windows

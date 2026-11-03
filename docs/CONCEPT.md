@@ -58,8 +58,8 @@ tickets/
       app-6842/
         ticket.md
         comments/
-          0001.md
-          0002.md
+          2026-11-03T10-04-24Z-henrik.md
+          2026-11-03T11-30-00Z-orch-1.sub-2.md
 ```
 
 `0006` is the shard (n ÷ 1000, four digits). A ticket's path never changes. The stage lives in the front matter; nothing is moved.
@@ -120,7 +120,16 @@ branch: dk/app-6842
 
 **Body.** Three fixed headings: *Description*, *Result*, *Log*. The log is append-only and written by the tool. The LLM supplies text only. Timestamps and attribution come from the tool, and the text is sanitized (no control characters, no forged log lines, length limit).
 
-**Comments** are separate files `comments/NNNN.md`. The number is allocated per ticket by CAS and each file has exactly one writer, so the ticket itself never sees merge conflicts.
+**Comments** are separate files `comments/<UTC-timestamp>-<author>.md`
+(for example `2026-11-03T10-04-24Z-henrik.md`; colons are replaced so the
+name is safe on every platform). The front matter carries `ticket`,
+`author` and `created_at`; there is no running number — the timestamp
+plus the author makes unintended collisions improbable, and the rare
+same-author-same-second case is resolved by trying the next second
+inside the write precondition (ADR-0007). Each file has exactly one
+writer, so the ticket itself never sees merge conflicts. The v0.1
+numbered names (`0001.md`) stay valid in older stores and `validate`
+accepts them when their `number` field matches.
 
 **Version token.** `rev` increases per ticket, together with the blob SHA. Both serve optimistic writes (`--if-version`, exit 12).
 

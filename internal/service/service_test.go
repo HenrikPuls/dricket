@@ -241,7 +241,7 @@ func TestSetFreeFieldVersionConflictAndStateRejected(t *testing.T) {
 	}
 }
 
-func TestCommentNumberingAndConcurrentComments(t *testing.T) {
+func TestCommentNamingAndConcurrentComments(t *testing.T) {
 	bare := setupBare(t)
 	ctx := context.Background()
 	alice := open(t, bare, "alice")
@@ -252,11 +252,17 @@ func TestCommentNumberingAndConcurrentComments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("comment 1: %v", err)
 	}
-	if !strings.HasSuffix(f1, "/comments/0001.md") {
-		t.Fatalf("file = %q", f1)
+	// v0.2 naming: UTC timestamp without colons plus the author, no
+	// running number (ADR-0007).
+	if !strings.Contains(f1, "/comments/") ||
+		!strings.HasSuffix(f1, "-alice.md") || strings.Contains(filepath.Base(f1), ":") {
+		t.Fatalf("file = %q; want timestamp-author naming", f1)
+	}
+	if content := bareShow(t, bare, f1); strings.Contains(content, "number:") {
+		t.Errorf("comment front matter carries a number:\n%s", content)
 	}
 
-	// Concurrent comments: both land with distinct numbers.
+	// Concurrent comments: both land under distinct names.
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
 	for _, s := range []*Service{alice, bob} {

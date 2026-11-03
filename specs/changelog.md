@@ -42,6 +42,9 @@ top-level CHANGELOG.md and are written at release time from this file.
   GoReleaser injects v{{.Version}}, install docs corrected: go
   install installs dricket, the dk alias ships in the archives) —
   handed over 2026-11-02
+- v0.2.0 changes (single binary `dk`, entry point cmd/dk; comments
+  named `<UTC-timestamp>-<author>.md` without a number, inbox
+  marker by file names, ADR-0007) — handed over 2026-11-03
 
 ## Shipped
 

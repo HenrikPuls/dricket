@@ -62,7 +62,7 @@ holds ticket files and the protected configuration.
 
 ```mermaid
 flowchart TB
-  CLI[cmd/dricket: commands, flags, output] --> Svc[internal/service: use cases]
+  CLI[cmd/dk: commands, flags, output] --> Svc[internal/service: use cases]
   Svc --> Model[internal/ticket: model, transitions]
   Svc --> FM[internal/frontmatter: parser, lint]
   Svc --> Store[internal/store: git subprocess, retry, working copy]
@@ -73,7 +73,7 @@ flowchart TB
 
 | Component | Responsibility | Owns (path) |
 |---|---|---|
-| CLI | Parse arguments, print data and messages, map errors to exit codes | `cmd/dricket/` |
+| CLI | Parse arguments, print data and messages, map errors to exit codes | `cmd/dk/` |
 | service | One function per use case (claim, release, extend, ...) | `internal/service/` |
 | ticket | Ticket model, field classes, stage transitions per role | `internal/ticket/` |
 | config | dricket.toml: lease limits, admins, quota, transitions | `internal/config/` |
@@ -154,6 +154,7 @@ Index only; details in `docs/adr/`.
 | [0004](adr/0004-stage-v2-config-and-exit-codes.md) | Stage v2: dricket.toml, TOML library, new exit codes | accepted |
 | [0005](adr/0005-ticket-priorities.md) | Ticket priorities (stage v2) | accepted |
 | [0006](adr/0006-next-orders-by-priority.md) | next orders by priority first | accepted |
+| [0007](adr/0007-comment-naming.md) | Comments named by timestamp and author | accepted |
 
 ## 10. Quality requirements
 

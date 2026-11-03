@@ -11,6 +11,25 @@ listed here.
 ### Added
 - Design concept (docs/CONCEPT.md) and repository skeleton.
 
+## [0.2.0] - 2026-11-03
+
+### Changed
+- Comment files are named `<UTC-timestamp>-<author>.md` (for example
+  `2026-11-03T10-04-24Z-henrik.md`) and carry no `number` field
+  anymore; the front matter is `ticket`, `author`, `created_at`
+  (ADR-0007). Same-author-same-second collisions resolve inside the
+  write precondition. v0.1 numbered names stay valid in older stores
+  and `validate` accepts them when the number matches.
+- The inbox marker stores the comment file names already seen instead
+  of a count (local, disposable state; a stale numeric marker resets
+  once).
+
+### Changed (packaging)
+- The program ships under the single name `dk`: GoReleaser builds one
+  binary, and the entry point is now `cmd/dk`, so
+  `go install github.com/HenrikPuls/dricket/cmd/dk@vX` installs `dk`
+  directly (the former `cmd/dricket` path is gone).
+
 ## [0.1.1] - 2026-11-03
 
 ### Fixed
