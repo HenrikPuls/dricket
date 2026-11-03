@@ -154,6 +154,38 @@ func TestCommitAcceptedPushWithAdoptFailure(t *testing.T) {
 	}
 }
 
+func TestCommitCommentDuringEdit(t *testing.T) {
+	svc, ws, bare, id, path := setupCommit(t)
+	ctx := context.Background()
+	if _, err := svc.Inbox(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	editCommitTicket(t, ws, path, "title: old title", "title: edited while commented")
+	bob := open(t, bare, "bob")
+	commentPath, err := bob.Comment(ctx, id, "please check the empty-password case")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inbox, err := svc.Inbox(ctx, id)
+	if err != nil || len(inbox.NewComments) != 1 || inbox.NewComments[0].Excerpt != "please check the empty-password case" {
+		t.Fatalf("inbox = %+v, %v", inbox, err)
+	}
+	result, err := svc.Commit(ctx, ws, id)
+	if err != nil || result.Rev != 2 {
+		t.Fatalf("Commit = %+v, %v", result, err)
+	}
+	tk := mustTicket(t, bareShow(t, bare, path))
+	if tk.Title != "edited while commented" || tk.Owner != "alice" || tk.Epoch != 1 {
+		t.Fatalf("ticket = %+v", tk)
+	}
+	if _, err := svc.Release(ctx, id, ticket.StageReview, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := bareShow(t, bare, commentPath); !strings.Contains(got, "please check the empty-password case") {
+		t.Fatalf("comment after release = %s", got)
+	}
+}
+
 func wsRemote(t *testing.T, ws *store.Workspace) string {
 	t.Helper()
 	return strings.TrimSpace(runGit(t, ws.Dir(), "remote", "get-url", "origin"))
