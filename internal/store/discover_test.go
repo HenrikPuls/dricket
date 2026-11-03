@@ -68,6 +68,7 @@ func TestInspectRootRequiresActualRootAndStoreConfig(t *testing.T) {
 func TestInspectRootUsesCommittedMainConfig(t *testing.T) {
 	ctx := context.Background()
 	dir := initDiscoveryStore(t, "tickets")
+	gitOut(t, dir, "switch", "--quiet", "main")
 	config := filepath.Join(dir, "dricket.toml")
 	if err := os.WriteFile(config, []byte("schema_version = 1\nbranch = \"wrong\"\n"), 0o600); err != nil {
 		t.Fatalf("write dirty config: %v", err)

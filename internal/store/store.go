@@ -90,10 +90,15 @@ type gitRunnerFunc func(context.Context, ...string) (string, string, error)
 type Store struct {
 	opts            Options
 	dir             string
+	localDir        string // non-bare local repository root; empty = push CAS
+	headRev         string // immutable read revision for this attempt
+	baseSHA         string // expected old local head for the current attempt
+	hooksPath       string // fixed empty hook path for local shared worktrees
+	localAttempt    int
 	gitConfigGlobal string // empty = ambient user configuration applies
 	gitRunner       gitRunnerFunc
 	sleep           func(time.Duration)
-	hasRef          bool // remote branch existed at the last fetch
+	hasRef          bool // ticket branch existed at the last refresh
 	rand            *rand.Rand
 	rngOnce         sync.Once
 }
@@ -124,7 +129,16 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 		return nil, fmt.Errorf("store: working copy dir: %w", err)
 	}
 
-	s := &Store{opts: opts, dir: dir, sleep: time.Sleep}
+	s := &Store{opts: opts, dir: dir, headRev: "FETCH_HEAD", sleep: time.Sleep}
+	if localDir, ok := localWorkingRepository(ctx, opts.Remote); ok {
+		s.localDir = localDir
+		s.headRev = "HEAD"
+		hooks, err := ensureEmptyHooks(opts.DataDir)
+		if err != nil {
+			return nil, err
+		}
+		s.hooksPath = hooks
+	}
 	if opts.IsolateGitConfig {
 		// An empty file replaces the user's global git configuration;
 		// the profile's own identity comes from its env (ADR: profiles
@@ -159,9 +173,11 @@ func (s *Store) HeadSHA(ctx context.Context) (string, error) {
 // Close releases nothing today; it exists so callers get used to it.
 func (s *Store) Close() error { return nil }
 
-// initOnce makes the working copy usable: init (or reuse), set the remote,
-// and make sure a local branch matching the ticket branch exists.
+// initOnce makes the private working copy usable for local CAS or push CAS.
 func (s *Store) initOnce(ctx context.Context) error {
+	if s.localDir != "" {
+		return s.initLocal(ctx)
+	}
 	if _, _, err := s.git(ctx, "rev-parse", "--git-dir"); err == nil {
 		if out, _, err := s.git(ctx, "remote", "get-url", "origin"); err != nil || strings.TrimSpace(out) != s.opts.Remote {
 			if err == nil {
@@ -194,6 +210,9 @@ func (s *Store) git(ctx context.Context, args ...string) (string, string, error)
 
 func (s *Store) execGit(ctx context.Context, args ...string) (string, string, error) {
 	full := append([]string{"-C", s.dir, "-c", "core.autocrlf=false"}, args...)
+	if s.localDir != "" {
+		full = append(full[:4], append([]string{"-c", "core.hooksPath=" + s.hooksPath}, full[4:]...)...)
+	}
 	cmd := exec.CommandContext(ctx, "git", full...) // #nosec G204 -- args are tool-built constants and validated paths (ADR-0002)
 	cmd.Env = append(os.Environ(), s.opts.Profile.Env(s.gitConfigGlobal)...)
 	var out, errb bytes.Buffer
@@ -221,10 +240,13 @@ func (s *Store) fetch(ctx context.Context) error {
 	}
 }
 
-// Refresh brings the working copy to the fetched head. After it, Has and
-// ReadFile read the fresh remote state. Read-only commands call this once;
-// the write loop calls it on every attempt.
+// Refresh brings the private working copy to the selected store head. After
+// it, Has and ReadFile read an immutable snapshot. Read-only commands call this
+// once; the write loop calls it on every attempt.
 func (s *Store) Refresh(ctx context.Context) error {
+	if s.localDir != "" {
+		return s.refreshLocal(ctx)
+	}
 	if err := s.fetch(ctx); err != nil {
 		return err
 	}
@@ -245,7 +267,7 @@ func (s *Store) refresh(ctx context.Context) error { return s.Refresh(ctx) }
 
 // Has reports whether a path exists on the current head.
 func (s *Store) Has(ctx context.Context, path string) (bool, error) {
-	spec := fmt.Sprintf("FETCH_HEAD:%s", path)
+	spec := fmt.Sprintf("%s:%s", s.headRev, path)
 	if !s.hasRef {
 		return false, nil
 	}
@@ -261,7 +283,7 @@ func (s *Store) ReadFile(ctx context.Context, path string) (string, error) {
 	if !s.hasRef {
 		return "", fmt.Errorf("%s: %w", path, ErrNoBranch)
 	}
-	out, _, err := s.git(ctx, "show", fmt.Sprintf("FETCH_HEAD:%s", path))
+	out, _, err := s.git(ctx, "show", fmt.Sprintf("%s:%s", s.headRev, path))
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", path, ErrNotExist)
 	}
@@ -273,7 +295,7 @@ func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
 	if !s.hasRef {
 		return nil, nil
 	}
-	args := []string{"ls-tree", "-r", "--name-only", "FETCH_HEAD"}
+	args := []string{"ls-tree", "-r", "--name-only", s.headRev}
 	if prefix != "" {
 		args = append(args, "--", prefix)
 	}
@@ -438,12 +460,13 @@ func (s *Store) RecentAdds(ctx context.Context, window time.Duration, author str
 // never touched by config reads.
 const configRef = "refs/dricket/config"
 
-// ConfigFile returns the content of a file from the protected main branch
-// of the remote (for example dricket.toml), or nil when the remote has no
-// main branch or the file does not exist. Callers decide whether that
-// means defaults or an error. Parse errors are the caller's business: a
-// broken config is a hard error for writes and a finding in validate.
+// ConfigFile returns a file from protected main, or nil when main or the file
+// is absent. Local non-bare stores read their main ref directly; remote and
+// bare stores fetch into a private config ref.
 func (s *Store) ConfigFile(ctx context.Context, name string) ([]byte, error) {
+	if s.localDir != "" {
+		return s.configFileLocal(ctx, name)
+	}
 	// --no-write-fetch-head keeps FETCH_HEAD, which the ticket protocol
 	// reads against, pointing at the ticket branch.
 	_, stderr, err := s.git(ctx, "fetch", "--quiet", "--no-write-fetch-head", "origin",
@@ -512,13 +535,13 @@ func (s *Store) ShowRev(ctx context.Context, rev, path string) (string, error) {
 // ---------------------------------------------------------------- grep ----
 
 // Grep runs a fixed-string, case-insensitive search over the ticket files
-// of the fetched head and returns git grep's raw "path:line:text" lines.
+// of the current snapshot and returns git grep's raw "path:line:text" lines.
 // The pattern is passed as one argument; no shell is involved.
 func (s *Store) Grep(ctx context.Context, pattern, prefix string) ([]string, error) {
 	if !s.hasRef {
 		return nil, nil
 	}
-	args := []string{"grep", "-I", "-n", "-F", "-i", "--", pattern, "FETCH_HEAD", "--", "tickets/" + prefix}
+	args := []string{"grep", "-I", "-n", "-F", "-i", "--", pattern, s.headRev, "--", "tickets/" + prefix}
 	out, stderr, err := s.git(ctx, args...)
 	if err != nil {
 		if out == "" && strings.TrimSpace(stderr) == "" {
