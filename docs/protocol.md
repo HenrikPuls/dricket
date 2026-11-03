@@ -115,7 +115,10 @@ A non-bare filesystem store uses a private detached linked worktree of the same
 repository. If the ticket ref is not checked out, publication is an atomic
 `update-ref <ref> <candidate> <base>` compare-and-swap. If it is checked out,
 ordinary writes use `merge --ff-only <candidate>` in that checkout, updating
-ref, index and working tree together. Pre-existing conflicting dirty paths
+ref, index and working tree together. A non-blocking OS file lock in the common
+Git directory serializes local publishers and is released on process exit, so
+another publisher's files cannot appear before its ref update. Pre-existing
+conflicting dirty paths
 return `conflict`/exit 12 immediately and remain untouched. Non-conflicting
 dirty paths, including a ticket edit during a comment write, survive. Dirty
 paths captured at refresh distinguish user conflicts from files created by a

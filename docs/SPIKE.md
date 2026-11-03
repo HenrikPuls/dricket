@@ -108,8 +108,11 @@ These are correctness results, not new throughput measurements.
 ADR-0010 adds real local-store integration coverage for ticket-branch discovery,
 immediate writes after init, immutable per-attempt snapshots, concurrent local
 claims and distinct writes, comments during dirty edits, same-file checkout
-conflicts (exit 12), whole-ticket commit/adoption and local sync/doctor. These
-tests exercise local ref CAS, not real-host latency or remote reliability.
+conflicts (exit 12), whole-ticket commit/adoption and local sync/doctor. A
+full-gate race exposed the merge/ref publication window; an OS-backed Git lock
+now serializes local publishers, and both local concurrency tests pass ten
+consecutive runs. These tests exercise local ref CAS, not real-host latency or
+remote reliability.
 
 Before capacity claims or a larger real-host rollout, record p50/p95/p99 for
 writes and interactive reads, push rejects and final-failure rates, cold and

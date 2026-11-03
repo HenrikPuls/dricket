@@ -158,8 +158,11 @@ git -C <ticket-checkout> merge --ff-only <candidate>
 
 The candidate already has the fresh base as parent. Fast-forward-only makes a
 concurrent non-descendant head a retryable rejection; no merge commit is
-created. Git also updates the index and working tree so that HEAD cannot move
-while leaving an otherwise clean checkout stale.
+created. A non-blocking OS file lock in the common Git directory serializes
+local publishers and is released on process exit, preventing another
+publisher's files from appearing before its ref update. Git also updates the
+index and working tree so that HEAD cannot move while leaving an otherwise
+clean checkout stale.
 
 Local changes that would be overwritten make publication fail without
 discarding them. The command reports error kind `conflict` with existing exit

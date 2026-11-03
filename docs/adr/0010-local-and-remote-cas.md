@@ -34,8 +34,11 @@ repeat every precondition; neither path rebases.
 - If the ticket ref is not checked out, publication uses `git update-ref` with
   the captured base as expected old value.
 - Ordinary local writes to a checked-out ticket branch use `merge --ff-only` in
-  that checkout. This updates ref, index and working tree together and preserves
-  non-conflicting dirty paths. A pre-existing conflicting dirty path returns
+  that checkout. A non-blocking OS file lock in the common Git directory
+  serializes local publication and is released automatically on process exit,
+  preventing another publisher's files from appearing before its ref update.
+  Fast-forward publication updates ref, index and working tree together and
+  preserves non-conflicting dirty paths. A pre-existing conflicting dirty path returns
   error kind `conflict`, exit 12, without retrying. Dirty paths are captured at
   refresh so a file concurrently created by another publisher remains a
   retryable race instead of being mistaken for pre-existing user work.

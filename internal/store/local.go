@@ -104,7 +104,10 @@ func errorsNew(action string, err error) error {
 	return fmt.Errorf("%s: %w", action, err)
 }
 
-var errCheckoutConflict = errors.New("local checkout changes would be overwritten")
+var (
+	errCheckoutConflict = errors.New("local checkout changes would be overwritten")
+	errLockBusy         = errors.New("local publication lock is busy")
+)
 
 func (s *Store) captureLocalDirty(ctx context.Context, ref string) error {
 	s.localDirty = nil
@@ -123,7 +126,39 @@ func (s *Store) captureLocalDirty(ctx context.Context, ref string) error {
 	return nil
 }
 
+func (s *Store) lockLocalPublication(ctx context.Context) (func(), bool, error) {
+	out, _, err := s.git(ctx, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return nil, false, fmt.Errorf("find local Git lock directory: %w", err)
+	}
+	dir := strings.TrimSpace(out)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return nil, false, err
+	}
+	file, err := os.OpenFile(filepath.Join(dir, "dricket-publish.lock"), os.O_CREATE|os.O_RDWR, 0o600) // #nosec G304 -- fixed lock in the selected repository's Git directory
+	if err != nil {
+		return nil, false, err
+	}
+	if err := lockFile(file); err != nil {
+		_ = file.Close()
+		if errors.Is(err, errLockBusy) {
+			return nil, true, nil
+		}
+		return nil, false, err
+	}
+	return func() { _ = file.Close() }, false, nil
+}
+
 func (s *Store) publishLocal(ctx context.Context, candidate, base string, preserve bool) (bool, error) {
+	release, busy, err := s.lockLocalPublication(ctx)
+	if err != nil {
+		return false, err
+	}
+	if busy {
+		return true, errLockBusy
+	}
+	defer release()
+
 	ref := "refs/heads/" + s.opts.branch()
 	checkout, checkedOut, err := s.localTicketCheckout(ctx, ref)
 	if err != nil {
