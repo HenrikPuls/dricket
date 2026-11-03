@@ -31,7 +31,7 @@ type NextResult struct {
 
 // eligible reports whether a ticket can be worked on now: free and open,
 // or its lease expired past the grace period (a takeover candidate), with
-// every dependency and the parent done or cancelled.
+// every scheduling dependency done or cancelled. Parent is hierarchy only.
 func eligible(tk ticket.Ticket, stages map[string]ticket.Stage, now time.Time) bool {
 	free := tk.Owner == "" && tk.Stage == ticket.StageOpen
 	expired := tk.Owner != "" && tk.LeaseUntil.Add(Grace).Before(now)
@@ -40,12 +40,6 @@ func eligible(tk ticket.Ticket, stages map[string]ticket.Stage, now time.Time) b
 	}
 	for _, dep := range tk.Depends {
 		s, ok := stages[dep]
-		if !ok || (s != ticket.StageDone && s != ticket.StageCancelled) {
-			return false
-		}
-	}
-	if tk.Parent != "" {
-		s, ok := stages[tk.Parent]
 		if !ok || (s != ticket.StageDone && s != ticket.StageCancelled) {
 			return false
 		}
