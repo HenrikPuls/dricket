@@ -185,3 +185,45 @@ func TestWorkspaceAdoptRefusesUnpushedCommit(t *testing.T) {
 		t.Fatalf("unpushed file = %q", got)
 	}
 }
+
+func TestWorkspaceLocalAdoptDoesNotRewindLaterCommit(t *testing.T) {
+	dir := initDiscoveryStore(t, "tickets")
+	commitVisibleFile(t, dir, workspaceTicket, "base\n", "base")
+	candidate := commitVisibleFile(t, dir, workspaceTicket, "candidate\n", "candidate")
+	ws := openWorkspaceForTest(t, dir)
+	var later string
+	ws.beforeFinalResetCheck = func() {
+		later = commitVisibleFile(t, dir, workspaceTicket, "later\n", "later accepted writer")
+	}
+	if err := ws.Adopt(context.Background(), candidate, workspaceTicket, "candidate\n"); err == nil {
+		t.Fatal("Adopt succeeded after a later writer advanced the branch")
+	}
+	if head := strings.TrimSpace(runGit(t, dir, "rev-parse", "HEAD")); head != later {
+		t.Fatalf("HEAD = %s, want later accepted commit %s", head, later)
+	}
+}
+
+func TestWorkspaceAdoptRechecksEditedContent(t *testing.T) {
+	bare, dir := setupWorkspace(t)
+	remote := openStore(t, bare, "bob", nil)
+	if err := remote.Write(context.Background(), writeFileSpec("tickets/accepted.txt", "accepted\n", nil)); err != nil {
+		t.Fatal(err)
+	}
+	accepted := strings.TrimSpace(runGit(t, bare, "rev-parse", "tickets"))
+	path := filepath.Join(dir, filepath.FromSlash(workspaceTicket))
+	if err := os.WriteFile(path, []byte("published edit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ws := openWorkspaceForTest(t, dir)
+	ws.beforeFinalResetCheck = func() {
+		if err := os.WriteFile(path, []byte("changed while adopting\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ws.Adopt(context.Background(), accepted, workspaceTicket, "published edit\n"); err == nil {
+		t.Fatal("Adopt accepted content changed during the final adoption step")
+	}
+	if got, _ := os.ReadFile(path); string(got) != "changed while adopting\n" { // #nosec G304 -- test-controlled temporary path
+		t.Fatalf("changed content was lost: %q", got)
+	}
+}

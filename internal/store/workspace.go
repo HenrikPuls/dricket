@@ -15,7 +15,8 @@ import (
 // Workspace is a user-owned ticket checkout. Unlike the private store, it
 // can contain unique uncommitted work and is never cleaned implicitly.
 type Workspace struct {
-	dir string
+	dir                   string
+	beforeFinalResetCheck func() // deterministic race injection for adoption tests
 }
 
 // OpenWorkspace finds the enclosing Git working tree.
@@ -137,11 +138,21 @@ func (w *Workspace) Adopt(ctx context.Context, commit, path, expected string) er
 	branch = strings.TrimSpace(branch)
 	historyRef := "refs/heads/" + branch
 	origin, err := w.git(ctx, "remote", "get-url", "origin")
-	if err == nil && strings.TrimSpace(origin) != "" {
+	local := err != nil || strings.TrimSpace(origin) == ""
+	if !local {
 		if _, err := w.git(ctx, "fetch", "--quiet", "origin", historyRef); err != nil {
 			return fmt.Errorf("fetch accepted commit: %w", err)
 		}
 		historyRef = "FETCH_HEAD"
+	} else {
+		release, busy, lockErr := lockGitRepository(ctx, w.dir)
+		if lockErr != nil {
+			return lockErr
+		}
+		if busy {
+			return errors.New("local adoption is busy with another publication")
+		}
+		defer release()
 	}
 	if _, err := w.git(ctx, "cat-file", "-e", commit+"^{commit}"); err != nil {
 		return errors.New("accepted commit is not available in the store")
@@ -151,6 +162,28 @@ func (w *Workspace) Adopt(ctx context.Context, commit, path, expected string) er
 	}
 	if _, err := w.git(ctx, "merge-base", "--is-ancestor", "HEAD", commit); err != nil {
 		return errors.New("ticket checkout has unpushed or divergent commits; local history was left unchanged")
+	}
+	if w.beforeFinalResetCheck != nil {
+		w.beforeFinalResetCheck()
+	}
+	if local {
+		if _, err := w.git(ctx, "merge-base", "--is-ancestor", commit, historyRef); err != nil {
+			return errors.New("accepted commit is no longer in the ticket history")
+		}
+		head, err := w.git(ctx, "rev-parse", "HEAD")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(head) != commit {
+			return errors.New("a later local commit was accepted; checkout was left unchanged")
+		}
+	}
+	content, err = os.ReadFile(filepath.Join(w.dir, filepath.FromSlash(clean))) // #nosec G304 -- validated in-repo path
+	if err != nil {
+		return err
+	}
+	if string(content) != expected {
+		return errors.New("edited file changed while the commit was running")
 	}
 	if err := w.requireOnly(ctx, clean); err != nil {
 		return err

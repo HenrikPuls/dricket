@@ -126,16 +126,16 @@ func (s *Store) captureLocalDirty(ctx context.Context, ref string) error {
 	return nil
 }
 
-func (s *Store) lockLocalPublication(ctx context.Context) (func(), bool, error) {
-	out, _, err := s.git(ctx, "rev-parse", "--git-common-dir")
+func lockGitRepository(ctx context.Context, dir string) (func(), bool, error) {
+	out, err := runGitEnv(ctx, dir, Options{}, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return nil, false, fmt.Errorf("find local Git lock directory: %w", err)
 	}
-	dir := strings.TrimSpace(out)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	common := strings.TrimSpace(out)
+	if err := os.MkdirAll(common, 0o750); err != nil {
 		return nil, false, err
 	}
-	file, err := os.OpenFile(filepath.Join(dir, "dricket-publish.lock"), os.O_CREATE|os.O_RDWR, 0o600) // #nosec G304 -- fixed lock in the selected repository's Git directory
+	file, err := os.OpenFile(filepath.Join(common, "dricket-publish.lock"), os.O_CREATE|os.O_RDWR, 0o600) // #nosec G304 -- fixed lock in the selected repository's Git directory
 	if err != nil {
 		return nil, false, err
 	}
@@ -147,6 +147,10 @@ func (s *Store) lockLocalPublication(ctx context.Context) (func(), bool, error) 
 		return nil, false, err
 	}
 	return func() { _ = file.Close() }, false, nil
+}
+
+func (s *Store) lockLocalPublication(ctx context.Context) (func(), bool, error) {
+	return lockGitRepository(ctx, s.dir)
 }
 
 func (s *Store) publishLocal(ctx context.Context, candidate, base string, preserve bool) (bool, error) {
