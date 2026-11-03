@@ -66,7 +66,7 @@ func TestWorkspaceSyncRefusesDirtyCheckout(t *testing.T) {
 	if err := ws.Sync(context.Background()); err == nil {
 		t.Fatal("Sync accepted a dirty checkout")
 	}
-	if got, _ := os.ReadFile(path); string(got) != "unique local work\n" {
+	if got, _ := os.ReadFile(path); string(got) != "unique local work\n" { // #nosec G304 -- test-controlled temporary path
 		t.Fatalf("local work changed to %q", got)
 	}
 }
@@ -112,10 +112,10 @@ func TestWorkspaceRestoreAndReadPair(t *testing.T) {
 	if err := ws.Restore(context.Background(), workspaceTicket); err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
-	if got, _ := os.ReadFile(ticketPath); strings.ReplaceAll(string(got), "\r\n", "\n") != "base ticket\n" {
+	if got, _ := os.ReadFile(ticketPath); strings.ReplaceAll(string(got), "\r\n", "\n") != "base ticket\n" { // #nosec G304 -- test-controlled temporary path
 		t.Errorf("restored ticket = %q", got)
 	}
-	if got, _ := os.ReadFile(otherPath); string(got) != "edited other\n" {
+	if got, _ := os.ReadFile(otherPath); string(got) != "edited other\n" { // #nosec G304 -- test-controlled temporary path
 		t.Errorf("unrelated file = %q", got)
 	}
 	_ = bare
@@ -140,7 +140,7 @@ func TestWorkspaceAdoptProtectsOtherChanges(t *testing.T) {
 	if err := ws.Adopt(context.Background(), commit, workspaceTicket, "published edit\n"); err == nil {
 		t.Fatal("Adopt accepted an unrelated dirty file")
 	}
-	if got, _ := os.ReadFile(other); string(got) != "unique other work\n" {
+	if got, _ := os.ReadFile(other); string(got) != "unique other work\n" { // #nosec G304 -- test-controlled temporary path
 		t.Fatalf("other work changed to %q", got)
 	}
 	if err := ws.Restore(context.Background(), "other.txt"); err != nil {

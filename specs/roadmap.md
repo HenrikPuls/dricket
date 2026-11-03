@@ -7,9 +7,8 @@ the items below; milestone numbers are not used.
 
 ## Now
 
-- R-12 Collaborative whole-ticket editing (owner request): claim → sync →
-  editor → commit, structural transition validation, independent comments,
-  exact-base CAS and unknown-push reconciliation (ADR-0009).
+Nothing. R-12 awaits owner verification; only R-13 below remains for its
+public documentation after acceptance.
 
 ## Later
 Each has a trigger; without it nothing is built. See "Deliberately deferred" in docs/CONCEPT.md.

@@ -6,6 +6,18 @@ top-level CHANGELOG.md and are written at release time from this file.
 
 ## Awaiting verification
 
+- R-12 Collaborative whole-ticket editing (ADR-0009): `claim` → `sync` →
+  editor → `commit`; `restore` follows git semantics; exact-base CAS rejects
+  stale ticket writes while allowing unrelated commits and comments;
+  structural identity/revision/epoch transition gate replaces role-based
+  history authorization; unknown fields are preserved; `parent` no longer
+  blocks scheduling; accepted pushes are reconciled after lost responses and
+  inconclusive results report `outcome-unknown` (exit 15). Tests: transition
+  tables, real workspace sync/restore/adopt, whole-ticket CLI flow, malformed
+  and stale edits, unrelated remote writes, comment/inbox preservation,
+  accepted-push fault injection and JSON error mapping. Local non-race suites,
+  build, vet, lint and docs checks pass; race requires CI because this Windows
+  environment has no C compiler — handed over 2026-11-03.
 - Skeleton: R-0 — handed over 2026-11-02
 - Infrastructure and Phase 0: public repository published (CI green, rulesets active, Pages live), roadmap and architecture refined — handed over 2026-11-02
 - Spike: R-1 — handed over 2026-11-02

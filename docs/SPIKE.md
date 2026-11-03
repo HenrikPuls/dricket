@@ -98,6 +98,21 @@ Raw data: [`spike/results/`](../spike/results/) (JSON reports and run logs).
   observation. Verification runs after the fact and proves the recorded
   history, not the absence of future bugs.
 
+## Protocol follow-up and remaining measurements
+
+The collaborative editing protocol (ADR-0009) adds integration coverage for
+exact-base whole-ticket commits, unrelated writes, comments during edits,
+dirty-checkout preservation and accepted-push/lost-response reconciliation.
+These are correctness results, not new throughput measurements.
+
+Before capacity claims or a larger real-host rollout, record p50/p95/p99 for
+writes and interactive reads, push rejects and final-failure rates, cold and
+incremental fetch size, read latency at several thousand to tens of thousands
+of tickets, and full-history `validate` time and memory at a representative
+multi-year history. Repeat against the real host with authentication and rate
+limits. Clock drift remains untested across machines; accepted-push fault
+injection is covered locally, but host-side hook behavior is not.
+
 ## Consequences
 
 - [ADR-0001](adr/0001-claim-by-push.md) stands, now with measured evidence.

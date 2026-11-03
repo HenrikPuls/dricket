@@ -192,6 +192,11 @@ Index only; details in `docs/adr/`.
 | Readability | A person edits a whole ticket in an editor | `dk commit` accepts valid content or names the invalid field |
 | Operability | A fresh runner installs the binary | works with only `git` present |
 
+Performance claims require measurements at the real host: p50/p95/p99 and
+final-failure rates per write, interactive reads at representative ticket
+counts, fetch size, and full-history validation time and memory. Local
+correctness spikes do not establish those thresholds.
+
 ## 11. Risks and technical debt
 
 | Risk | Owner | Trigger to revisit |

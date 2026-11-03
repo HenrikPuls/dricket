@@ -34,17 +34,17 @@ func setupCommit(t *testing.T) (*Service, *store.Workspace, string, string, stri
 	return svc, ws, bare, id, path
 }
 
-func editCommitTicket(t *testing.T, ws *store.Workspace, path, old, new string) {
+func editCommitTicket(t *testing.T, ws *store.Workspace, path, old, replacement string) {
 	t.Helper()
 	full := filepath.Join(ws.Dir(), filepath.FromSlash(path))
-	content, err := os.ReadFile(full)
+	content, err := os.ReadFile(full) // #nosec G304 -- test-controlled temporary path
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(content), old) {
 		t.Fatalf("%q not found in ticket", old)
 	}
-	if err := os.WriteFile(full, []byte(strings.Replace(string(content), old, new, 1)), 0o600); err != nil {
+	if err := os.WriteFile(full, []byte(strings.Replace(string(content), old, replacement, 1)), 0o600); err != nil { // #nosec G703 -- test-controlled temporary path
 		t.Fatal(err)
 	}
 }
@@ -91,7 +91,7 @@ func TestCommitRejectsMalformedAndProtocolEdits(t *testing.T) {
 				t.Fatal("remote ticket changed")
 			}
 			full := filepath.Join(ws.Dir(), filepath.FromSlash(path))
-			content, _ := os.ReadFile(full)
+			content, _ := os.ReadFile(full) // #nosec G304 -- test-controlled temporary path
 			if !strings.Contains(string(content), tc.new) {
 				t.Fatalf("local edit was not preserved: %q", content)
 			}
@@ -110,7 +110,7 @@ func TestCommitRejectsStaleTicketAndPreservesEdit(t *testing.T) {
 		t.Fatalf("err = %v, code %d; want 12", err, ExitCode(err))
 	}
 	full := filepath.Join(ws.Dir(), filepath.FromSlash(path))
-	content, _ := os.ReadFile(full)
+	content, _ := os.ReadFile(full) // #nosec G304 -- test-controlled temporary path
 	if !strings.Contains(string(content), "title: local edit") {
 		t.Fatalf("local edit lost: %q", content)
 	}

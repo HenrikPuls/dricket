@@ -212,7 +212,7 @@ func TestValidateTransitionRejectsBrokenProtocolState(t *testing.T) {
 		want string
 	}{
 		{"identity", func(tk *Ticket) { tk.CreatedBy = "somebody-else"; tk.Rev++ }, "identity"},
-		{"revision", func(tk *Ticket) {}, "rev"},
+		{"revision", func(_ *Ticket) {}, "rev"},
 		{"epoch decrease", func(tk *Ticket) { tk.Epoch--; tk.Rev++ }, "epoch"},
 		{"same owner epoch change", func(tk *Ticket) { tk.Epoch++; tk.Rev++ }, "epoch"},
 		{"release resets epoch", func(tk *Ticket) {

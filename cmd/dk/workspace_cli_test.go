@@ -46,14 +46,14 @@ func setupCLIWorkspace(t *testing.T) (bare, dir string) {
 	return bare, dir
 }
 
-func editCLICommitTicket(t *testing.T, dir, old, new string) {
+func editCLICommitTicket(t *testing.T, dir, old, replacement string) {
 	t.Helper()
 	path := filepath.Join(dir, "tickets", "app", "0000", "app-1", "ticket.md")
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(path) // #nosec G304 -- test-controlled temporary path
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(strings.Replace(string(content), old, new, 1)), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(strings.Replace(string(content), old, replacement, 1)), 0o600); err != nil { // #nosec G703 -- test-controlled temporary path
 		t.Fatal(err)
 	}
 }
