@@ -1,6 +1,6 @@
 # Git-like CLI, structured help and agent-skill design
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-11-03
 - Roadmap: R-15 and R-16, implemented as separate batches after R-14
 - Related: ADR-0008, ADR-0009

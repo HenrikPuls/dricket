@@ -1,6 +1,6 @@
 # Local and remote CAS design
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-11-03
 - Roadmap: R-14
 - Related: ADR-0002, ADR-0008, ADR-0009
@@ -122,9 +122,12 @@ Both modes retain the existing `Store.Write` contract:
 5. On a concurrent-head rejection, back off with jitter and repeat from step 1.
    Never rebase.
 
-For local mode, refresh reads the current local ticket ref and resets only the
-private detached worktree. For remote mode, refresh remains fetch from the
-selected remote. Reads similarly use the corresponding current head.
+For local mode, refresh resolves the current local ticket ref to a commit SHA
+and resets only the private detached worktree to that SHA. The attempt retains
+this immutable base SHA and performs all precondition/read/mutation work
+against private `HEAD`, never against the still-moving public ref. Publication
+uses the captured SHA as the expected old value. For remote mode, refresh
+remains fetch from the selected remote and reads use `FETCH_HEAD`.
 
 ## Local publication
 
