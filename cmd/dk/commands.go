@@ -19,6 +19,9 @@ import (
 var serviceCmds = []command{
 	{name: "add", synopsis: "create a ticket", run: runAdd},
 	{name: "claim", synopsis: "take a ticket", run: runClaim},
+	{name: "sync", synopsis: "fast-forward a clean ticket checkout", run: runSync},
+	{name: "restore", synopsis: "discard local changes to one path", run: runRestore},
+	{name: "commit", synopsis: "validate and publish an edited ticket", run: runCommit},
 	{name: "release", synopsis: "push and free a ticket", run: runRelease},
 	{name: "extend", synopsis: "extend the lease of a ticket", run: runExtend},
 	{name: "update", synopsis: "add a progress note, keep the claim", run: runUpdate},

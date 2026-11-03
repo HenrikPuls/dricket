@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -37,8 +38,24 @@ func OpenWorkspace(ctx context.Context, dir string) (*Workspace, error) {
 // Dir returns the checkout root.
 func (w *Workspace) Dir() string { return w.dir }
 
+// RemoteBranch returns the checkout origin (or local directory) and branch.
+func (w *Workspace) RemoteBranch(ctx context.Context) (string, string, error) {
+	branch, err := w.git(ctx, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		return "", "", errors.New("workspace is not on a local branch")
+	}
+	remote := w.dir
+	if origin, err := w.git(ctx, "remote", "get-url", "origin"); err == nil && strings.TrimSpace(origin) != "" {
+		remote = strings.TrimSpace(origin)
+	}
+	return remote, strings.TrimSpace(branch), nil
+}
+
 func (w *Workspace) git(ctx context.Context, args ...string) (string, error) {
-	return runGitEnv(ctx, w.dir, Options{}, args...)
+	cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- fixed executable, argument list, validated paths
+	cmd.Dir = w.dir
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
 
 // Sync fetches the current ticket branch and fast-forwards a clean checkout.
@@ -138,7 +155,7 @@ func (w *Workspace) requireClean(ctx context.Context) error {
 		return err
 	}
 	if len(paths) != 0 {
-		return errors.New("ticket checkout has local changes; commit or restore them first")
+		return fmt.Errorf("ticket checkout has local changes (%s); commit or restore them first", strings.Join(paths, ", "))
 	}
 	return nil
 }

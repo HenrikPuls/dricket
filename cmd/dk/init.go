@@ -75,8 +75,9 @@ dk guide.
 `,
 		"AGENTS.md": `# Agents
 
-Tickets in this repository are managed by dricket. Never edit ticket
-files directly.
+Tickets in this repository are managed by dricket. Claim a ticket, sync the
+checkout, edit the Markdown file and publish it with dk commit. Comment on
+other claimed tickets instead of editing their ticket files.
 
 Run dk guide and follow it: the workflow, the exit-code rules and the
 fencing rules (exit 13 means stop) are printed by the tool itself, so

@@ -141,6 +141,9 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 // Dir is the private working copy path (diagnostics, tests).
 func (s *Store) Dir() string { return s.dir }
 
+// RemoteBranch returns the selected remote and ticket branch.
+func (s *Store) RemoteBranch() (string, string) { return s.opts.Remote, s.opts.branch() }
+
 // HeadSHA returns the commit at the private working copy's HEAD.
 func (s *Store) HeadSHA(ctx context.Context) (string, error) {
 	out, _, err := s.git(ctx, "rev-parse", "HEAD")

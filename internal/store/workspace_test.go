@@ -51,8 +51,8 @@ func TestWorkspaceSyncFastForwardsCleanCheckout(t *testing.T) {
 	if err := ws.Sync(context.Background()); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
-	if got, err := os.ReadFile(filepath.Join(dir, "tickets", "remote.txt")); err != nil || string(got) != "remote\n" {
-		t.Fatalf("remote file = %q, %v", got, err)
+	if got := runGit(t, dir, "show", "HEAD:tickets/remote.txt"); got != "remote\n" {
+		t.Fatalf("remote Git content = %q", got)
 	}
 }
 
@@ -112,7 +112,7 @@ func TestWorkspaceRestoreAndReadPair(t *testing.T) {
 	if err := ws.Restore(context.Background(), workspaceTicket); err != nil {
 		t.Fatalf("Restore: %v", err)
 	}
-	if got, _ := os.ReadFile(ticketPath); string(got) != "base ticket\n" {
+	if got, _ := os.ReadFile(ticketPath); strings.ReplaceAll(string(got), "\r\n", "\n") != "base ticket\n" {
 		t.Errorf("restored ticket = %q", got)
 	}
 	if got, _ := os.ReadFile(otherPath); string(got) != "edited other\n" {
