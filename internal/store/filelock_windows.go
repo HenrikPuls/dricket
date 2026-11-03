@@ -20,7 +20,7 @@ func lockFile(file *os.File) error {
 		0,
 		uintptr(^uint32(0)),
 		0,
-		uintptr(unsafe.Pointer(overlapped)),
+		uintptr(unsafe.Pointer(overlapped)), // #nosec G103 -- LockFileEx requires a pointer to syscall.Overlapped
 	)
 	if result == 0 {
 		if errors.Is(err, syscall.Errno(33)) { // ERROR_LOCK_VIOLATION
