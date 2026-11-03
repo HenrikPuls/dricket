@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // Package validate implements the second validation level of
-// docs/CONCEPT.md: everything lint checks on single files, plus reference
-// and cycle checks over the whole store, plus a replay of the complete
-// history that proves every state change was a legal transition and
-// comments stayed add-only. Read only; meant for hooks, CI and scheduled
-// jobs. Lint prevents accidents per file, validate detects intent.
+// docs/CONCEPT.md: single-file checks, references and cycles, plus structural
+// replay of ticket history and add-only comments. It proves document and
+// transition integrity, not actor intent. Read only; meant for hooks, CI and
+// scheduled jobs.
 package validate
 
 import (
@@ -59,14 +58,12 @@ func (r *report) warn(id, kind, format string, a ...any) {
 	r.findings = append(r.findings, Finding{Ticket: id, Kind: kind, Message: fmt.Sprintf(format, a...), Warning: true})
 }
 
-// Store validates the whole ticket branch: the current state (parse,
-// lint, references, cycles, comment shape, lease bounds, secret scan) and
-// the replayed history (identity immutable, rev +1 per write, epoch never
-// decreasing, legal ownership and stage transitions per role, comments
-// add-only, nothing deleted). The replay judges by the timestamps the
-// tickets carry, not by wall-clock time. The dricket.toml from main
-// provides the limits and the transition table; a broken config is
-// reported as a finding and the defaults apply so the rest still runs.
+// Store validates the whole ticket branch: current snapshots and replayed
+// history must satisfy identity, revision, epoch, ownership, comment and path
+// invariants. Takeover timing uses recorded timestamps, which are consistency
+// evidence rather than proof of real time. Current operational limits come
+// from dricket.toml; broken config is reported while checks continue with
+// defaults.
 func Store(ctx context.Context, st *store.Store) ([]Finding, error) {
 	if err := st.Refresh(ctx); err != nil {
 		return nil, fmt.Errorf("refresh: %w", err)
@@ -80,7 +77,7 @@ func Store(ctx context.Context, st *store.Store) ([]Finding, error) {
 	checkLeaseBounds(tickets, cfg, r)
 	checkPriorities(tickets, cfg, r)
 	checkPrefixRegister(ctx, st, stages, r)
-	if err := checkHistory(ctx, st, cfg, r); err != nil {
+	if err := checkHistory(ctx, st, r); err != nil {
 		return nil, err
 	}
 	sort.Slice(r.findings, func(i, j int) bool {
@@ -354,7 +351,7 @@ func checkReferences(tickets map[string]ticket.Ticket, stages map[string]ticket.
 }
 
 // checkHistory replays every commit that touched the ticket tree.
-func checkHistory(ctx context.Context, st *store.Store, cfg *config.Config, r *report) error {
+func checkHistory(ctx context.Context, st *store.Store, r *report) error {
 	commits, err := st.Commits(ctx)
 	if err != nil {
 		return fmt.Errorf("commits: %w", err)
@@ -380,13 +377,13 @@ func checkHistory(ctx context.Context, st *store.Store, cfg *config.Config, r *r
 			r.add("", "multi-ticket-commit", "%s touches %d tickets; the tool writes one ticket per commit", short(c), len(touched))
 		}
 		for _, ch := range changes {
-			checkHistoryChange(ctx, st, c, ch, cfg, r)
+			checkHistoryChange(ctx, st, c, ch, r)
 		}
 	}
 	return nil
 }
 
-func checkHistoryChange(ctx context.Context, st *store.Store, commit string, ch store.FileChange, cfg *config.Config, r *report) {
+func checkHistoryChange(ctx context.Context, st *store.Store, commit string, ch store.FileChange, r *report) {
 	p := ch.Path
 	shortCommit := short(commit)
 	if !strings.HasPrefix(p, "tickets/") {
@@ -407,7 +404,7 @@ func checkHistoryChange(ctx context.Context, st *store.Store, commit string, ch 
 			}
 			checkCreation(id, content, r)
 		default:
-			checkTransition(ctx, st, commit, p, id, cfg, r)
+			checkTransition(ctx, st, commit, p, id, r)
 		}
 	case strings.HasSuffix(p, ".md") && strings.Contains(p, "/comments/"):
 		switch ch.Status {
@@ -453,7 +450,7 @@ func checkCreation(id, content string, r *report) {
 }
 
 // checkTransition replays one change to a ticket file against its parent.
-func checkTransition(ctx context.Context, st *store.Store, commit, path, id string, cfg *config.Config, r *report) {
+func checkTransition(ctx context.Context, st *store.Store, commit, path, id string, r *report) {
 	cur, err := st.ShowRev(ctx, commit, path)
 	if err != nil {
 		r.add(id, "read-error", "%s: %v", short(commit), err)
@@ -461,8 +458,6 @@ func checkTransition(ctx context.Context, st *store.Store, commit, path, id stri
 	}
 	prev, err := st.ShowRev(ctx, commit+"^", path)
 	if err != nil {
-		// No parent version: the file is new in this commit, which the
-		// name-status would have reported as A; treat as unusable.
 		r.add(id, "read-error", "no parent version at %s", short(commit))
 		return
 	}
@@ -487,59 +482,30 @@ func checkTransition(ctx context.Context, st *store.Store, commit, path, id stri
 		return
 	}
 
-	// Identity never changes.
-	if curTk.ID != prevTk.ID || !curTk.CreatedAt.Equal(prevTk.CreatedAt) ||
-		curTk.CreatedBy != prevTk.CreatedBy || curTk.SchemaVersion != prevTk.SchemaVersion {
-		r.add(id, "identity-changed", "%s rewrote identity fields", short(commit))
-	}
-	// rev rises by exactly one per write.
-	if curTk.Rev != prevTk.Rev+1 {
-		r.add(id, "rev-not-incremented", "%s: rev %d -> %d (expected +1)", short(commit), prevTk.Rev, curTk.Rev)
-	}
-	if curTk.Epoch < prevTk.Epoch {
-		r.add(id, "epoch-decreased", "%s: epoch %d -> %d", short(commit), prevTk.Epoch, curTk.Epoch)
-	}
-	// Ownership transitions.
-	switch {
-	case prevTk.Owner == "" && curTk.Owner == "":
-		// Free-field edit while unclaimed.
-	case prevTk.Owner == "" && curTk.Owner != "":
-		if curTk.Epoch != prevTk.Epoch+1 {
-			r.add(id, "claim-without-epoch", "%s: claim did not raise the epoch", short(commit))
+	for _, finding := range ticket.ValidateTransition(prevTk, curTk) {
+		kind := "invalid-transition"
+		switch finding.Field {
+		case "identity":
+			kind = "identity-changed"
+		case "rev":
+			kind = "rev-not-incremented"
+		case "epoch":
+			kind = "epoch-invalid"
+			if strings.Contains(finding.Message, "decrease") {
+				kind = "epoch-decreased"
+			}
 		}
-	case prevTk.Owner != "" && curTk.Owner == "":
-		// Release.
-	case prevTk.Owner == curTk.Owner:
-		if curTk.Epoch != prevTk.Epoch {
-			r.add(id, "epoch-changed-on-update", "%s: epoch %d -> %d while the owner stayed",
-				short(commit), prevTk.Epoch, curTk.Epoch)
-		}
-	default:
-		// Takeover: only after the previous lease plus grace.
+		r.add(id, kind, "%s: %s", short(commit), finding.String())
+	}
+
+	if prevTk.Owner != "" && curTk.Owner != "" && prevTk.Owner != curTk.Owner {
 		lu := prevTk.LeaseUntil
 		ca := curTk.ClaimedAt
 		if lu.IsZero() || ca.IsZero() || lu.Add(service.Grace).After(ca) {
 			r.add(id, "takeover-before-expiry", "%s: %s took over from %s before lease %s plus grace",
 				short(commit), curTk.Owner, prevTk.Owner, stampOf(lu))
 		}
-		if curTk.Epoch != prevTk.Epoch+1 {
-			r.add(id, "takeover-without-epoch", "%s: takeover did not raise the epoch", short(commit))
-		}
 	}
-	// Stage transitions per role, only when the stage actually moved;
-	// note, extend and comment keep the stage. The table comes from
-	// dricket.toml (defaults apply without a config).
-	if curTk.Stage != prevTk.Stage && !ticket.CanTransitionTable(cfg.Transitions, roleOf(curTk.Kind), prevTk.Stage, curTk.Stage) {
-		r.add(id, "illegal-transition", "%s: %s may not move %s from %s to %s",
-			short(commit), roleOf(curTk.Kind), id, prevTk.Stage, curTk.Stage)
-	}
-}
-
-func roleOf(kind ticket.Kind) ticket.Role {
-	if kind == ticket.KindHuman {
-		return ticket.RoleHuman
-	}
-	return ticket.RoleAgent
 }
 
 func stampOf(t time.Time) string {

@@ -193,6 +193,114 @@ func TestToDocRoundTrip(t *testing.T) {
 	}
 }
 
+func TestValidateTransitionAllowsWholeTicketContentEdit(t *testing.T) {
+	previous := parseForTest(t, example)
+	current := previous
+	current.Title = "new title"
+	current.Body = "\n## Description\n\nrewritten\n"
+	current.Stage = StageDone
+	current.Rev++
+	if got := ValidateTransition(previous, current); len(got) != 0 {
+		t.Fatalf("findings = %v", got)
+	}
+}
+
+func TestValidateTransitionRejectsBrokenProtocolState(t *testing.T) {
+	cases := []struct {
+		name string
+		mut  func(*Ticket)
+		want string
+	}{
+		{"identity", func(tk *Ticket) { tk.CreatedBy = "somebody-else"; tk.Rev++ }, "identity"},
+		{"revision", func(tk *Ticket) {}, "rev"},
+		{"epoch decrease", func(tk *Ticket) { tk.Epoch--; tk.Rev++ }, "epoch"},
+		{"same owner epoch change", func(tk *Ticket) { tk.Epoch++; tk.Rev++ }, "epoch"},
+		{"release resets epoch", func(tk *Ticket) {
+			tk.Owner = ""
+			tk.ClaimedAt = time.Time{}
+			tk.LeaseUntil = time.Time{}
+			tk.Extensions = 0
+			tk.Epoch = 0
+			tk.Rev++
+		}, "epoch"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			previous := parseForTest(t, example)
+			current := previous
+			tc.mut(&current)
+			found := false
+			for _, finding := range ValidateTransition(previous, current) {
+				if strings.Contains(finding.Message, tc.want) || finding.Field == tc.want {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("findings do not mention %q", tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateTransitionClaimAndRelease(t *testing.T) {
+	free := parseForTest(t, example)
+	free.Owner = ""
+	free.ClaimedAt = time.Time{}
+	free.LeaseUntil = time.Time{}
+	free.Stage = StageOpen
+	free.Extensions = 0
+
+	claimed := free
+	claimed.Owner = "alice"
+	claimed.ClaimedAt = free.CreatedAt
+	claimed.LeaseUntil = free.CreatedAt.Add(time.Hour)
+	claimed.Stage = StageInProgress
+	claimed.Epoch++
+	claimed.Rev++
+	if got := ValidateTransition(free, claimed); len(got) != 0 {
+		t.Fatalf("valid claim findings = %v", got)
+	}
+	badClaim := claimed
+	badClaim.Epoch = free.Epoch
+	if got := ValidateTransition(free, badClaim); len(got) == 0 {
+		t.Fatal("claim without epoch increment passed")
+	}
+
+	released := parseForTest(t, example)
+	released.Owner = ""
+	released.ClaimedAt = time.Time{}
+	released.LeaseUntil = time.Time{}
+	released.Extensions = 0
+	released.Stage = StageReview
+	released.Rev++
+	if got := ValidateTransition(parseForTest(t, example), released); len(got) != 0 {
+		t.Fatalf("valid release findings = %v", got)
+	}
+}
+
+func TestToDocPreservesUnknownFields(t *testing.T) {
+	in := strings.Replace(example, "labels: bug, auth", "future_one: one\nlabels: bug, auth\nfuture_two: two", 1)
+	tk := parseForTest(t, in)
+	doc := tk.ToDoc()
+	for key, want := range map[string]string{"future_one": "one", "future_two": "two"} {
+		if got, ok := doc.Get(key); !ok || got != want {
+			t.Errorf("%s = %q, %t; want %q, true", key, got, ok, want)
+		}
+	}
+	first, second := -1, -1
+	for i, field := range doc.Fields {
+		switch field.Key {
+		case "future_one":
+			first = i
+		case "future_two":
+			second = i
+		}
+	}
+	if first < 0 || second <= first {
+		t.Fatalf("unknown field order changed: %v", doc.Fields)
+	}
+}
+
 func TestCanTransition(t *testing.T) {
 	cases := []struct {
 		role Role

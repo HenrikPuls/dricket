@@ -191,7 +191,7 @@ func TestValidateDetectsManipulations(t *testing.T) {
 	rewrite(t, bare, "app-1", func(tk *ticket.Ticket) { tk.CreatedBy = "mallory" })
 	// Rev jump.
 	rewrite(t, bare, "app-1", func(tk *ticket.Ticket) { tk.Rev += 2 })
-	// Illegal stage transition by an agent: review -> done.
+	// Collaborative whole-ticket edit: review -> done is structurally legal.
 	rewrite(t, bare, "app-1", func(tk *ticket.Ticket) { tk.Stage = ticket.StageDone })
 	// Dangling depends on the other ticket.
 	rewrite(t, bare, "app-2", func(tk *ticket.Ticket) { tk.Depends = []string{"app-99"} })
@@ -216,10 +216,13 @@ func TestValidateDetectsManipulations(t *testing.T) {
 		t.Fatalf("validate: %v", err)
 	}
 	k1 := kindsOf(findings, "app-1")
-	for _, want := range []string{"identity-changed", "rev-not-incremented", "illegal-transition", "comment-modified"} {
+	for _, want := range []string{"identity-changed", "rev-not-incremented", "comment-modified"} {
 		if !k1[want] {
 			t.Errorf("app-1 missing finding %q; got %v", want, k1)
 		}
+	}
+	if k1["illegal-transition"] {
+		t.Error("collaborative stage edit was rejected as a role violation")
 	}
 	k2 := kindsOf(findings, "app-2")
 	if !k2["dangling-depends"] {

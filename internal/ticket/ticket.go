@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Package ticket holds the ticket data model of docs/CONCEPT.md: the three
-// field classes (identity, state, free), required fields and enums, state
-// consistency, and stage transitions per role. It works on parsed
-// front-matter documents and never touches Git.
+// Package ticket holds the ticket data model of docs/CONCEPT.md: required
+// fields, enums, state consistency and structural transitions. Field classes
+// guide targeted commands; they are not repository authorization. The package
+// works on parsed front-matter documents and never touches Git.
 package ticket
 
 import (
@@ -22,13 +22,12 @@ const SchemaVersion = 1
 // Class is one of the three field classes of the concept.
 type Class int
 
-// The three field classes of the concept: identity is immutable after
-// creation, state changes only through tool commands, free fields belong
-// to the owner or a human and are validated.
+// Field classes classify targeted mutations; whole-ticket edits still pass
+// through structural transition validation.
 const (
 	Identity Class = iota // immutable after creation
-	State                 // changes only through tool commands
-	Free                  // owner or a human, validated
+	State                 // coordination state with transition invariants
+	Free                  // editable content or workflow metadata
 )
 
 func (c Class) String() string {
@@ -156,19 +155,20 @@ type Ticket struct {
 	Owner         string // "" when unclaimed
 	Kind          Kind
 	Size          Size
-	ClaimedAt     time.Time // zero when unclaimed
-	LeaseUntil    time.Time // zero when unclaimed
-	Epoch         int       // fencing token, rises on every claim or takeover
-	Rev           int       // rises with every write to the ticket
-	Extensions    int       // used extends of the claim
-	Labels        []string  // free
-	Depends       []string  // free, ticket ids
-	Parent        string    // free, ticket id
-	Touches       []string  // free
-	Branch        string    // free, git ref, validated with git check-ref-format later
-	Repos         []string  // free
-	Priority      string    // free, lower-case value from dricket.toml [priorities]
-	Body          string    // everything after the closing ---
+	ClaimedAt     time.Time           // zero when unclaimed
+	LeaseUntil    time.Time           // zero when unclaimed
+	Epoch         int                 // fencing token, rises on every claim or takeover
+	Rev           int                 // rises with every write to the ticket
+	Extensions    int                 // used extends of the claim
+	Labels        []string            // free
+	Depends       []string            // free, ticket ids
+	Parent        string              // free, ticket id
+	Touches       []string            // free
+	Branch        string              // free, git ref, validated with git check-ref-format later
+	Repos         []string            // free
+	Priority      string              // free, lower-case value from dricket.toml [priorities]
+	Body          string              // everything after the closing ---
+	Extra         []frontmatter.Field // unknown fields preserved in their original order
 }
 
 // FromDoc converts a parsed document into a Ticket. It returns the unknown
@@ -178,6 +178,7 @@ func FromDoc(doc frontmatter.Document) (t Ticket, unknown []string, err error) {
 	for _, f := range doc.Fields {
 		if _, known := ClassOf(f.Key); !known {
 			unknown = append(unknown, f.Key)
+			t.Extra = append(t.Extra, f)
 		}
 	}
 	get := func(key string) (string, bool) { return doc.Get(key) }
@@ -317,6 +318,11 @@ func (t Ticket) ToDoc() frontmatter.Document {
 		{Key: "touches", Value: strings.Join(t.Touches, ", ")},
 		{Key: "branch", Value: t.Branch},
 		{Key: "repos", Value: strings.Join(t.Repos, ", ")},
+	}
+	for _, field := range t.Extra {
+		if _, known := ClassOf(field.Key); !known {
+			fields = append(fields, frontmatter.Field{Key: field.Key, Value: field.Value})
+		}
 	}
 	return frontmatter.Document{Fields: fields, Body: t.Body}
 }
