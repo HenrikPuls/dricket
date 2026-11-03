@@ -19,6 +19,19 @@ A dricket store is a Git repository with two branches:
 The storage triple is `(remote, branch, path)`. The default branch is
 `tickets`; the default path prefix is `tickets/`.
 
+## Consistency and trust
+
+The accepted commits on the ticket ref have one total order; the accepted
+push is the write's linearization point. Reads are snapshots at a fetched
+commit and can become stale immediately. There is no atomic transaction
+across `main` and `tickets`, across repositories, or across external side
+effects. Leases additionally depend on local clocks.
+
+Repository writers are trusted collaborators. Authentication and branch
+authorization belong to the Git host. dricket validates document integrity
+and legal state succession; it does not prove actor truthfulness. Epoch
+fencing stops compliant stale writers, not arbitrary external side effects.
+
 ## Ticket layout
 
 ```
@@ -44,34 +57,36 @@ opens it, the next `---` line closes it. One `key: value` per line, no
 nesting, no duplicate keys, no tabs in keys, no multi-line values, no
 control characters. Everything after the closing `---` is the body.
 
-Fields and their classes:
+Field rules are structural, not per-field authorization:
 
-| Class | Fields | Who may change |
-|---|---|---|
-| identity | `id`, `created_at`, `created_by`, `schema_version` | nobody after creation; `id` equals the path |
-| state | `stage`, `owner`, `kind`, `size`, `claimed_at`, `lease_until`, `epoch`, `rev`, `extensions` | only through dricket commands |
-| free | `title`, `labels`, `depends`, `parent`, `touches`, `branch`, `repos` | the owner or a human, validated |
+| Rule | Fields |
+|---|---|
+| immutable identity | `id`, `created_at`, `created_by`, `schema_version`; `id` equals the path |
+| claim and lease invariants | `owner`, `kind`, `size`, `claimed_at`, `lease_until`, `epoch`, `rev`, `extensions` |
+| editable content and workflow | `stage`, `title`, `labels`, `depends`, `parent`, `touches`, `branch`, `repos`, `priority`, and the body |
 
 Timestamps are RFC 3339 in UTC. Empty values are written as `key:` with
 nothing after the colon (an unclaimed ticket has an empty `owner`).
 Unknown keys are warnings, never errors: newer tools must not break older
-repos.
+repos, and tool writes preserve unknown fields.
 
-The body carries three fixed headings: *Description* (free text), *Result*
-(written by `release --result`), *Log* (append-only, written by the tool
-only, one line per event: `- <timestamp> <actor> <event>`).
+The body carries three fixed headings: *Description*, *Result* and *Log*.
+The log uses one line per entry (`- <timestamp> <actor> <event>`), but is
+human-readable information, not a machine-parsed event protocol.
 
-Comments are separate add-only files. Each has a small front matter with
-`ticket`, `number`, `author`, `created_at` and a body with the text.
-Anyone may add a comment, claim or not; nobody edits or deletes one.
+Comments are separate add-only files. Current comments carry `ticket`,
+`author`, `created_at` and a body; legacy numbered names retain their
+`number` field. Anyone may add a comment, claim or not; nobody edits or
+deletes one. Adding a comment does not change the ticket's `rev`.
 
 ## Version tokens
 
-- `rev` rises by exactly one with every write to the ticket file.
+- `rev` is the public optimistic ticket version and rises by exactly one
+  with every successor of `ticket.md`; `--if-version` compares it.
 - `epoch` is the fencing token: it rises by one on every claim or takeover
-  and never decreases, also not on release.
-- `--if-version` compares `rev` (optimistic writes, exit 12). A writer
-  whose `epoch` no longer matches has lost the claim (exit 13).
+  and never decreases, also not on release. A writer whose epoch no longer
+  matches has lost the claim (exit 13).
+- Blob SHA is storage metadata, not a second public version token.
 
 ## Write protocol
 
@@ -80,23 +95,48 @@ Every write is one push to the `tickets` branch. Never a rebase:
 1. `git fetch` the ticket branch.
 2. Reset the private working copy to the fetched head.
 3. Check the preconditions **on that fresh head** (ticket free, owner and
-   epoch as expected, path not taken, comment number free).
+   epoch as expected, path not taken, comment name free).
 4. Apply the mutation to the working copy; exactly the files the mutation
    wrote are staged.
-5. Commit with the actor's git identity.
+5. Commit with the actor's git identity and record the commit SHA.
 6. Push `HEAD` to `refs/heads/<branch>`.
 7. If the push was rejected because someone else pushed first —
    non-fast-forward, fetch-first, or the server-side `cannot lock ref`
    race — back off and start over at step 1.
-8. Any other push failure (rights, protection, network) ends the write
-   immediately: retrying cannot help.
+8. Definite rights or protection failures end the write immediately.
+9. A transport failure can leave the outcome unknown. Fetch and check
+   whether the recorded commit is an ancestor of the remote head. Return
+   success if it is, definite failure if a complete fetch proves absence,
+   and otherwise error kind `outcome-unknown` with exit 15. Never blindly
+   replay a mutation after an unknown outcome.
 
 Retry starting values (configuration, not constants): at most 8 attempts,
 backoff 200 ms doubling per attempt, capped at 5 s, jitter between 0.5 and
 1.5, total budget 30 s.
 
 The private working copy lives in the tool's data directory outside any
-project; it is disposable. Each profile gets its own.
+project; it is disposable. Each profile gets its own. A user checkout with
+uncommitted edits is not disposable and is never reset or cleaned implicitly.
+
+## Whole-ticket editing
+
+The normal workflow is `claim`, `sync`, an ordinary editor, and `commit`:
+
+- `sync` runs inside an existing ticket checkout. It fetches the ticket
+  branch and fast-forwards a clean checkout; dirty or non-fast-forward
+  state is refused.
+- `restore <path>` discards local changes to one safe in-repo path, like
+  `git restore`; it does not fetch.
+- `commit <id>` reads the ticket at local `HEAD` as the exact edit base and
+  the working-tree file as the edited candidate. On every CAS attempt the
+  fresh remote ticket must still equal that base, and the caller must own
+  the claim. The command preserves identity and claim fields, sets
+  `rev = fresh rev + 1`, validates the complete transition, commits and
+  pushes through the private store.
+- Only after the push succeeds does `commit` update the user checkout, and
+  only when the published file is still the checkout's only dirty path.
+  A remote change to the same ticket is exit 12. Comments and unrelated
+  tickets can advance without causing that conflict.
 
 ## Id allocation
 
@@ -137,7 +177,7 @@ secret_scan = true        # refuse likely credentials before they land
 values = ["critical", "high", "normal", "low"]   # allowed values of the
 default = "normal"        # free field `priority`; fills `add` without --priority
 
-[transitions.agent]       # agent stage moves; human/admin are fixed
+[transitions.agent]       # legacy command policy; not an integrity rule
 open = ["in-progress", "blocked", "needs-input"]
 in-progress = ["review", "blocked", "needs-input", "open"]
 blocked = ["in-progress", "open"]
@@ -146,9 +186,9 @@ review = ["in-progress"]
 ```
 
 Parsing is strict: unknown keys, unknown stages, non-positive durations
-and a wrong `schema_version` are errors with the line named. Missing
-roles or stages in `[transitions.agent]` keep the defaults shown above;
-an explicit empty list means "no moves from this stage". Priorities
+and a wrong `schema_version` are errors with the line named. Legacy
+`[transitions.agent]` remains parseable for compatibility but does not
+authorize or invalidate repository writes (ADR-0009). Priorities
 replace the starting set as a whole; the default must be one of the
 values, and the starting set (critical, high, normal, low, default
 normal) applies without a `[priorities]` table (ADR-0005). The lease is
@@ -246,8 +286,8 @@ without any of them `add` fails with a hint (ADR-0008).
   `rev` by one, the reason lands in the log. At most 3 extends per claim
   (starting value); the reason is required.
 - `note <id> <text>` (and `update <id> --note`) appends a log entry and
-  keeps the claim with its owner. Body editing through the tool comes
-  later.
+  keeps the claim with its owner. Whole-ticket content editing uses the
+  claim → sync → editor → commit workflow.
 - `leases` lists active leases, most urgent first. Status per lease:
   `ok`, `expiring` (less than 20 percent of the lease left), `expired`
   (past `lease_until` plus grace). `quiet` is a separate hint: nothing
@@ -296,7 +336,7 @@ ticket file `schema_version` (currently both 1).
 | 12 | race lost or version conflict (`--if-version`) |
 | 13 | claim lost (lease taken over), own changes saved |
 | 14 | invalid transition or validation error |
-| 15 | network or push failure after all attempts |
+| 15 | definite network/push failure or `outcome-unknown` after reconciliation remains inconclusive |
 | 16 | tool too old or unknown schema version |
 | 17 | permission denied (force-release by a non-admin) |
 | 18 | quota exceeded |
@@ -312,16 +352,18 @@ jobs. Exit 14 with the findings, warnings do not fail.
 `dk validate` checks the fetched head and replays the complete history:
 
 - current state: every file under `tickets/` parses, passes lint, has the
-  id its path says; comments carry matching number, ticket and author;
-  `depends` and `parent` exist; the dependency graph has no cycles; the
-  granted lease of every claim is within `limits.lease_max` from
-  dricket.toml;
-- history replay: identity fields never changed, `rev` rose by exactly
-  one per write, `epoch` never decreased, every ownership change was a
-  claim, a release or a takeover after `lease_until` plus grace, stage
-  moves match the transitions of dricket.toml (or the defaults without a
-  config), comments stayed add-only, nothing was deleted, one ticket per
-  commit.
+  id its path says; comments carry matching name, ticket and author (plus
+  matching `number` for legacy comments); `depends` and `parent` exist; the
+  dependency graph has no cycles; the granted lease of every claim is within
+  `limits.lease_max` from dricket.toml;
+- history replay: identity fields never changed, `rev` rose by exactly one
+  per ticket-file successor, `epoch` never decreased, claims and takeovers
+  raised it by one, same-owner edits kept it, releases did not reset it,
+  takeovers recorded a time after the previous lease plus grace, comments
+  stayed add-only, nothing was deleted, and v1 writes touched one ticket
+  per commit. Stage enums are validated, but role and command origin are
+  not integrity properties. Recorded timestamps provide consistency
+  evidence, not proof of real time or actor identity.
 
 `dk validate --trailers <git-range>` runs in a code repository and checks
 every commit of the range for the dricket trailers (`Dricket-Ticket`,
@@ -365,9 +407,10 @@ All three guards are configured in dricket.toml (see Configuration).
 ## Workflow commands
 
 - `next` picks the next suitable ticket: free and open, or its lease
-  expired past the grace period (a takeover candidate), with every
-  dependency and the parent in `done` or `cancelled`. Highest priority
-  first (the `[priorities].values` order), then lowest number, and exit
+  expired past the grace period (a takeover candidate), with every entry in
+  `depends` in `done` or `cancelled`. `parent` is hierarchy only and never
+  blocks eligibility. Highest priority first (the `[priorities].values`
+  order), then lowest number, and exit
   10 when nothing qualifies (ADR-0006). `--claim` takes it
   directly, `--size` sets the lease size, `-p` restricts the prefix.
 - `search <query>` is a fixed-string, case-insensitive full-text search

@@ -7,11 +7,14 @@ the items below; milestone numbers are not used.
 
 ## Now
 
-Nothing. v0.1.0 is released (stages v0 to v2); the remaining items below
-wait for their trigger.
+- R-12 Collaborative whole-ticket editing (owner request): claim → sync →
+  editor → commit, structural transition validation, independent comments,
+  exact-base CAS and unknown-push reconciliation (ADR-0009).
 
 ## Later
 Each has a trigger; without it nothing is built. See "Deliberately deferred" in docs/CONCEPT.md.
+- R-13 Public documentation and landing page for R-12 — trigger: owner
+  acceptance of the verified collaborative editing implementation.
 - R-6 Lamport or hybrid clocks — trigger: offline writing or multiple refs.
 - R-7 Local cache or daemon — trigger: measured slowness.
 - R-8 Messages between agents (`messages/<recipient>/`) — trigger: cases that comments do not cover.

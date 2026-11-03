@@ -11,3 +11,7 @@ only postponed live under "Later" in specs/roadmap.md, with their trigger.
 | 2026-11-02 | Heartbeat commits to keep a lease alive | Too many commits; long leases by size plus `extend` with a reason |
 | 2026-11-02 | Built-in watcher or background poller | Users loop `dk inbox` themselves (`watch`, cron, timer) |
 | 2026-11-02 | Shell scripts as the implementation | Not portable (quoting, Windows), fragile parsing |
+| 2026-11-03 | `dk edit` | The normal workflow is claim, sync, an ordinary editor and commit; an editor wrapper adds no capability |
+| 2026-11-03 | Per-field authorization in the ticket store | Repository writers are trusted collaborators; structural integrity is enforced instead |
+| 2026-11-03 | Parse the human ticket log as a semantic event protocol | Snapshots and Git diffs are authoritative; parsing prose would add a fragile second contract |
+| 2026-11-03 | Blob SHA as a second public ticket-version token | `rev` already provides optimistic concurrency; one public token is sufficient |
