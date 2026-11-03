@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -95,12 +96,18 @@ Read AGENTS.md first. It points at dk guide, which carries the rules.
 // runInit implements `dk init [dir-or-url]`: like git init, it sets up a
 // repository in a directory - the ticket branch checked out, the scaffold
 // committed on main - or pushes both branches to a remote URL.
-func runInit(e *env, args []string) (any, *cliError) {
+func newInitFlagSet() *flag.FlagSet {
 	fs := newFlagSet("init")
-	branch := fs.String("branch", "tickets", "name of the ticket branch")
+	fs.String("branch", "tickets", "name of the ticket branch")
+	return fs
+}
+
+func runInit(e *env, args []string) (any, *cliError) {
+	fs := newInitFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
+	branch := stringFlag(fs, "branch")
 	if fs.NArg() > 2 {
 		return nil, usageError("init: at most one directory or URL and one prefix expected")
 	}
@@ -119,25 +126,25 @@ func runInit(e *env, args []string) (any, *cliError) {
 	if err != nil {
 		return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 	}
-	opts := store.Options{Remote: target, Branch: *branch, Profile: prof}
-	if err := store.Init(context.Background(), opts, scaffoldFiles(*branch, prefix)); err != nil {
+	opts := store.Options{Remote: target, Branch: branch, Profile: prof}
+	if err := store.Init(context.Background(), opts, scaffoldFiles(branch, prefix)); err != nil {
 		return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 	}
 	if !e.json {
 		if strings.Contains(target, "://") || strings.HasPrefix(target, "git@") {
-			e.outf("scaffolded %s (pushed main and %s)\n", target, *branch)
+			e.outf("scaffolded %s (pushed main and %s)\n", target, branch)
 		} else {
 			abs, _ := filepath.Abs(target)
 			e.outf("initialized ticket store in %s\n", abs)
-			e.outf("  checked out branch: %s\n", *branch)
+			e.outf("  checked out branch: %s\n", branch)
 			if prefix != "" {
 				e.outf("  registered prefix: %s\n", prefix)
 			}
-			e.outf("  work inside the store: dk add -c \"First ticket\"\n")
-			e.outf("  bind it from a code repo: dk use --store %s#%s && dk use %s\n", abs, *branch, prefix)
+			e.outf("  work inside the store: dk add -m \"First ticket\"\n")
+			e.outf("  bind it from a code repo: dk use --store %s#%s && dk use %s\n", abs, branch, prefix)
 		}
 	}
-	return map[string]any{"remote": target, "branch": *branch, "prefix": prefix}, nil
+	return map[string]any{"remote": target, "branch": branch, "prefix": prefix}, nil
 }
 
 // ---------------------------------------------------------- setup-agent --

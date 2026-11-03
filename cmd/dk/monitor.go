@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"strings"
 	"time"
@@ -13,24 +14,27 @@ import (
 
 // --------------------------------------------------------------- extend --
 
-func runExtend(e *env, args []string) (any, *cliError) {
+func newExtendFlagSet() *flag.FlagSet {
 	fs := newFlagSet("extend")
-	reason := fs.String("m", "", "why the lease is extended (required)")
-	fs.StringVar(reason, "message", "", "why the lease is extended (required)")
+	var message string
+	fs.StringVar(&message, "m", "", "why the lease is extended (required)")
+	fs.StringVar(&message, "message", "", "why the lease is extended (required)")
+	return fs
+}
+
+func runExtend(e *env, args []string) (any, *cliError) {
+	fs := newExtendFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
-	if fs.NArg() != 1 {
-		return nil, usageError("extend: exactly one ticket id expected")
-	}
-	if *reason == "" {
-		return nil, usageError("extend: -m/--message is required")
+	if fs.NArg() != 1 || textFlag(fs) == "" {
+		return nil, usageError("extend: a ticket id and -m/--message are required")
 	}
 	s, cerr := e.svc()
 	if cerr != nil {
 		return nil, cerr
 	}
-	res, err := s.Extend(context.Background(), fs.Arg(0), *reason)
+	res, err := s.Extend(context.Background(), fs.Arg(0), textFlag(fs))
 	if err != nil {
 		return nil, wrapErr(err)
 	}
@@ -43,21 +47,27 @@ func runExtend(e *env, args []string) (any, *cliError) {
 
 // ----------------------------------------------------------------- note --
 
-func runNote(e *env, args []string) (any, *cliError) {
+func newNoteFlagSet() *flag.FlagSet {
 	fs := newFlagSet("note")
-	note := fs.String("m", "", "progress note")
-	fs.StringVar(note, "message", "", "progress note")
+	var message string
+	fs.StringVar(&message, "m", "", "progress note")
+	fs.StringVar(&message, "message", "", "progress note")
+	return fs
+}
+
+func runNote(e *env, args []string) (any, *cliError) {
+	fs := newNoteFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
-	if fs.NArg() != 1 || *note == "" {
+	if fs.NArg() != 1 || textFlag(fs) == "" {
 		return nil, usageError("note: a ticket id and -m/--message text are required")
 	}
 	s, cerr := e.svc()
 	if cerr != nil {
 		return nil, cerr
 	}
-	res, err := s.Note(context.Background(), fs.Arg(0), *note)
+	res, err := s.Note(context.Background(), fs.Arg(0), textFlag(fs))
 	if err != nil {
 		return nil, wrapErr(err)
 	}
@@ -69,11 +79,16 @@ func runNote(e *env, args []string) (any, *cliError) {
 
 // --------------------------------------------------------------- leases --
 
-func runLeases(e *env, args []string) (any, *cliError) {
+func newLeasesFlagSet() *flag.FlagSet {
 	fs := newFlagSet("leases")
-	expiring := fs.Bool("expiring", false, "only leases with less than 20 percent left")
-	stale := fs.Bool("stale", false, "only expired leases (dead claims)")
-	check := fs.Bool("check", false, "exit with 20 when expired leases exist")
+	fs.Bool("expiring", false, "only leases with less than 20 percent left")
+	fs.Bool("stale", false, "only expired leases (dead claims)")
+	fs.Bool("check", false, "exit with 20 when expired leases exist")
+	return fs
+}
+
+func runLeases(e *env, args []string) (any, *cliError) {
+	fs := newLeasesFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
@@ -84,7 +99,7 @@ func runLeases(e *env, args []string) (any, *cliError) {
 	if cerr != nil {
 		return nil, cerr
 	}
-	infos, err := s.Leases(context.Background(), service.LeasesFilter{Expiring: *expiring, Stale: *stale})
+	infos, err := s.Leases(context.Background(), service.LeasesFilter{Expiring: boolFlag(fs, "expiring"), Stale: boolFlag(fs, "stale")})
 	if err != nil {
 		return nil, wrapErr(err)
 	}
@@ -101,7 +116,7 @@ func runLeases(e *env, args []string) (any, *cliError) {
 			e.msg("no matching leases\n")
 		}
 	}
-	if *check && service.HasExpired(infos) {
+	if boolFlag(fs, "check") && service.HasExpired(infos) {
 		var expired []string
 		for _, l := range infos {
 			if l.Status == service.LeaseExpired {

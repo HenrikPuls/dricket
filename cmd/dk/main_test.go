@@ -94,7 +94,7 @@ func TestHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code = %d", code)
 	}
-	if !strings.Contains(out, "Usage:") || !strings.Contains(out, "Commands:") {
+	if !strings.Contains(out, "Usage:") || !strings.Contains(out, "Setup:") {
 		t.Errorf("out = %q", out)
 	}
 }

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 
 	"github.com/HenrikPuls/dricket/internal/service"
@@ -13,9 +14,14 @@ import (
 // runValidate implements `dk validate`: the store check by default, and
 // with --trailers <range> the epoch trailer gate for a code repository's
 // commit range (run inside that repository).
-func runValidate(e *env, args []string) (any, *cliError) {
+func newValidateFlagSet() *flag.FlagSet {
 	fs := newFlagSet("validate")
-	trailers := fs.String("trailers", "", "check a git range in the current code repository for dricket trailers")
+	fs.String("trailers", "", "check a git range in the current code repository for dricket trailers")
+	return fs
+}
+
+func runValidate(e *env, args []string) (any, *cliError) {
+	fs := newValidateFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
@@ -28,12 +34,12 @@ func runValidate(e *env, args []string) (any, *cliError) {
 	}
 	ctx := context.Background()
 
-	if *trailers != "" {
+	if trailers := stringFlag(fs, "trailers"); trailers != "" {
 		if err := s.Store.Refresh(ctx); err != nil {
 			return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 		}
 		readFile := func(path string) (string, error) { return s.Store.ReadFile(ctx, path) }
-		findings, err := validate.Trailers(ctx, validate.ReadTicketFromStore(readFile), ".", *trailers)
+		findings, err := validate.Trailers(ctx, validate.ReadTicketFromStore(readFile), ".", trailers)
 		if err != nil {
 			return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 		}

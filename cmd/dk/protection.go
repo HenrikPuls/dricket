@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"strings"
 
 	"github.com/HenrikPuls/dricket/internal/ticket"
@@ -11,25 +12,28 @@ import (
 
 // ------------------------------------------------------- force-release --
 
-func runForceRelease(e *env, args []string) (any, *cliError) {
+func newForceReleaseFlagSet() *flag.FlagSet {
 	fs := newFlagSet("force-release")
-	reason := fs.String("m", "", "why the claim is force-released (required)")
-	fs.StringVar(reason, "message", "", "why the claim is force-released (required)")
-	stage := fs.String("stage", "open", "target stage after the release (default open)")
+	var message string
+	fs.StringVar(&message, "m", "", "why the claim is force-released (required)")
+	fs.StringVar(&message, "message", "", "why the claim is force-released (required)")
+	fs.String("stage", "open", "target stage after the release (default open)")
+	return fs
+}
+
+func runForceRelease(e *env, args []string) (any, *cliError) {
+	fs := newForceReleaseFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
-	if fs.NArg() != 1 {
-		return nil, usageError("force-release: exactly one ticket id expected")
-	}
-	if *reason == "" {
-		return nil, usageError("force-release: -m/--message is required")
+	if fs.NArg() != 1 || textFlag(fs) == "" {
+		return nil, usageError("force-release: a ticket id and -m/--message are required")
 	}
 	s, cerr := e.svc()
 	if cerr != nil {
 		return nil, cerr
 	}
-	res, err := s.ForceRelease(context.Background(), fs.Arg(0), *reason, ticket.Stage(strings.ToLower(*stage)))
+	res, err := s.ForceRelease(context.Background(), fs.Arg(0), textFlag(fs), ticket.Stage(strings.ToLower(stringFlag(fs, "stage"))))
 	if err != nil {
 		return nil, wrapErr(err)
 	}
