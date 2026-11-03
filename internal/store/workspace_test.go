@@ -156,3 +156,32 @@ func TestWorkspaceAdoptProtectsOtherChanges(t *testing.T) {
 		t.Fatalf("accepted remote content missing: %v", err)
 	}
 }
+
+func TestWorkspaceAdoptRefusesUnpushedCommit(t *testing.T) {
+	bare, dir := setupWorkspace(t)
+	localFile := filepath.Join(dir, "unpushed.txt")
+	if err := os.WriteFile(localFile, []byte("local commit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, dir, "add", "unpushed.txt")
+	runGit(t, dir, "-c", "user.name=alice", "-c", "user.email=alice@invalid", "commit", "--quiet", "-m", "unpushed")
+	localHead := strings.TrimSpace(runGit(t, dir, "rev-parse", "HEAD"))
+	remote := openStore(t, bare, "bob", nil)
+	if err := remote.Write(context.Background(), writeFileSpec("tickets/remote.txt", "remote\n", nil)); err != nil {
+		t.Fatal(err)
+	}
+	accepted := strings.TrimSpace(runGit(t, bare, "rev-parse", "tickets"))
+	if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(workspaceTicket)), []byte("published edit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ws := openWorkspaceForTest(t, dir)
+	if err := ws.Adopt(context.Background(), accepted, workspaceTicket, "published edit\n"); err == nil {
+		t.Fatal("Adopt accepted divergent local history")
+	}
+	if got := strings.TrimSpace(runGit(t, dir, "rev-parse", "HEAD")); got != localHead {
+		t.Fatalf("HEAD = %s, want preserved %s", got, localHead)
+	}
+	if got, _ := os.ReadFile(localFile); string(got) != "local commit\n" { // #nosec G304 -- test-controlled temporary path
+		t.Fatalf("unpushed file = %q", got)
+	}
+}

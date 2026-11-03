@@ -140,6 +140,9 @@ func (w *Workspace) Adopt(ctx context.Context, commit, path, expected string) er
 	if _, err := w.git(ctx, "merge-base", "--is-ancestor", commit, "FETCH_HEAD"); err != nil {
 		return errors.New("accepted commit is not in the remote ticket history")
 	}
+	if _, err := w.git(ctx, "merge-base", "--is-ancestor", "HEAD", commit); err != nil {
+		return errors.New("ticket checkout has unpushed or divergent commits; local history was left unchanged")
+	}
 	if err := w.requireOnly(ctx, clean); err != nil {
 		return err
 	}

@@ -154,6 +154,34 @@ func TestCommitAcceptedPushWithAdoptFailure(t *testing.T) {
 	}
 }
 
+func TestCommitAcceptedPushPreservesUnpushedLocalCommit(t *testing.T) {
+	svc, ws, bare, id, path := setupCommit(t)
+	localFile := filepath.Join(ws.Dir(), "unpushed.txt")
+	if err := os.WriteFile(localFile, []byte("local commit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, ws.Dir(), "add", "unpushed.txt")
+	runGit(t, ws.Dir(), "-c", "user.name=alice", "-c", "user.email=alice@invalid", "commit", "--quiet", "-m", "unpushed")
+	localHead := strings.TrimSpace(runGit(t, ws.Dir(), "rev-parse", "HEAD"))
+	editCommitTicket(t, ws, path, "title: old title", "title: accepted remotely")
+	result, err := svc.Commit(context.Background(), ws, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Synced {
+		t.Fatal("divergent local checkout reported synced")
+	}
+	if got := strings.TrimSpace(runGit(t, ws.Dir(), "rev-parse", "HEAD")); got != localHead {
+		t.Fatalf("HEAD = %s, want preserved %s", got, localHead)
+	}
+	if got, _ := os.ReadFile(localFile); string(got) != "local commit\n" { // #nosec G304 -- test-controlled temporary path
+		t.Fatalf("unpushed file = %q", got)
+	}
+	if got := bareShow(t, bare, path); !strings.Contains(got, "title: accepted remotely") {
+		t.Fatalf("accepted remote edit missing: %s", got)
+	}
+}
+
 func TestCommitCommentDuringEdit(t *testing.T) {
 	svc, ws, bare, id, path := setupCommit(t)
 	ctx := context.Background()
