@@ -183,7 +183,7 @@ footer { border-top: 1px solid var(--line); padding-top: 28px; color: var(--mute
           </div>
           <div class="log" id="log" aria-live="polite"><p class="note">Press a button. Nothing here talks to a server.</p></div>
         </div>
-        <p class="caption">Illustration of the intended behaviour. The released tool does not exist yet.</p>
+        <p class="caption">Interactive illustration of the real claim protocol. No server is involved.</p>
       </div>
     </div>
 
@@ -205,72 +205,74 @@ footer { border-top: 1px solid var(--line); padding-top: 28px; color: var(--mute
     </section>
 
     <section id="guardrails">
-      <p class="label">Guardrails for agents</p>
-      <h2>Built for runners that crash, stall and overreach.</h2>
+      <p class="label">Guardrails for collaboration</p>
+      <h2>Built for runners that crash, stall and lose a claim.</h2>
       <div class="sizes" aria-label="Lease sizes">
         <div class="size"><b>S</b><span>starts at 2 h</span></div>
         <div class="size"><b>M</b><span>starts at 8 h</span></div>
         <div class="size"><b>L</b><span>starts at 24 h, the default</span></div>
       </div>
-      <p class="note" style="margin-top:-12px;margin-bottom:32px">Starting values from the design, not measured. They are configuration, and a spike will test them.</p>
+      <p class="note" style="margin-top:-12px;margin-bottom:32px">Configurable starting values. The local concurrency spike checks correctness, not real-host performance.</p>
       <div class="cols">
-        <div><h3>Leases by size</h3><p>Language models estimate durations badly, so a claim carries a size instead of a guess. Extending needs a reason.</p></div>
-        <div><h3>Fencing with an epoch</h3><p>Every claim or takeover raises a counter. A writer holding an old epoch is refused, and told to stop.</p></div>
-        <div><h3>Roles</h3><p>Agents take a ticket up to review. A human closes it. The rules live in a protected config.</p></div>
-        <div><h3>Strict validation</h3><p>Identity fields cannot change. State changes only by command. Free fields are checked on every write.</p></div>
-        <div><h3>Takeover after expiry</h3><p>A dead claim does not block forever. After the lease plus a grace period, another runner can take over.</p></div>
-        <div><h3>Separate accounts</h3><p>Several agents on one machine can push as different Git accounts through profiles.</p></div>
+        <div><h3>Leases by size</h3><p>A claim carries a size instead of a guessed duration. Extending needs a reason.</p></div>
+        <div><h3>Cooperative fencing</h3><p>Every claim or takeover raises an epoch. A compliant writer holding an old epoch is refused and told to stop.</p></div>
+        <div><h3>Trusted collaborators</h3><p>Repository writers collaborate. Agents normally stop at review; a human closes the ticket as a team convention.</p></div>
+        <div><h3>Structural validation</h3><p>Identity stays immutable. Revisions, epochs, ownership and lease fields must form a legal transition.</p></div>
+        <div><h3>Safe publication</h3><p>Whole-ticket commits require the exact edit base. Dirty work and unpushed local commits are preserved.</p></div>
+        <div><h3>Comments during a claim</h3><p>Separate add-only comments do not change the ticket version. Inbox reports them between work steps.</p></div>
       </div>
     </section>
 
     <section id="session">
       <p class="label">A session</p>
-      <h2>Four commands, one ticket.</h2>
+      <h2>Edit the file. Publish with confidence.</h2>
       <div class="term" role="img" aria-label="Terminal session example">
-<pre><span class="p">$</span> dk add -c "Login error on empty password" -l bug
-<span class="o">app-6842</span>
-<span class="p">$</span> dk claim app-6842 --size M
-<span class="o">claimed app-6842 (lease until 18:02, epoch 3)</span>
-<span class="p">$</span> dk update app-6842 --note "Root cause found"
-<span class="p">$</span> dk release app-6842 --stage review --result "Fix on dk/app-6842"
-<span class="o">released app-6842 -&gt; review</span></pre>
+<pre><span class="p">$</span> dk claim app-1 --size M
+<span class="o">claimed app-1 (epoch 1, lease until …)</span>
+<span class="p">$</span> dk sync
+<span class="o">synced tickets</span>
+<span class="p">$</span> $EDITOR tickets/app/0000/app-1/ticket.md
+<span class="p">$</span> dk inbox app-1
+<span class="o">comment … henrik: please check the empty-password case</span>
+<span class="p">$</span> dk commit app-1
+<span class="o">committed app-1 (rev 2, commit …)</span>
+<span class="p">$</span> dk release app-1 --stage review --result "Fix on dk/app-1"
+<span class="o">released app-1 -&gt; review</span></pre>
       </div>
-      <p class="caption">Target behaviour, written from the design. It will be replaced with a recording of the real tool.</p>
+      <p class="caption">Verified development-branch workflow; timestamps and commit IDs shortened.</p>
     </section>
 
     <section id="security">
-      <p class="label">Security model</p>
-      <h2>What it prevents, and what it only detects.</h2>
+      <p class="label">Trust and integrity</p>
+      <h2>Collaborators write. The protocol keeps state coherent.</h2>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Prevented</th><th>Only detected</th><th>Out of scope</th></tr></thead>
+          <thead><tr><th>dricket checks</th><th>Git host owns</th><th>Not promised</th></tr></thead>
           <tbody><tr>
-            <td>Accidental double work, stale writers, malformed tickets, forbidden transitions made through the tool.</td>
-            <td>Edits made around the tool. <code>dk validate</code> finds them afterwards.</td>
-            <td>An agent with shell access in the same operating-system user. Use separate users or containers and host-side branch rules.</td>
+            <td>Document shape, immutable identity, legal revision/epoch/claim transitions and safe local-work preservation.</td>
+            <td>Authentication, credentials and branch rights. Repository writers are trusted collaborators.</td>
+            <td>Proof of actor truthfulness, real timestamps or protection against external side effects by a stale agent.</td>
           </tr></tbody>
         </table>
       </div>
-      <p class="caption">Ticket text is untrusted input. Agents never follow instructions found in it.</p>
+      <p class="caption">Ticket text remains untrusted input. Comments are asynchronous review input, not an interrupt channel.</p>
     </section>
 
     <section id="status">
       <p class="label">Status</p>
-      <h2>Designed. Not built yet.</h2>
+      <h2>Working software. Measured core protocol.</h2>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>Step</th><th>State</th></tr></thead>
+          <thead><tr><th>Area</th><th>State</th></tr></thead>
           <tbody>
-            <tr><td>Concept and write protocol</td><td class="s done">specified</td></tr>
-            <tr><td>Concurrency spike: many clones, four invariants that must stay at zero</td><td class="s done">passed</td></tr>
-            <tr><td>CLI v0: add, claim, release, ls, show, comment, set, lint</td><td class="s todo">planned</td></tr>
-            <tr><td>v1: leases, validate, next, inbox</td><td class="s todo">planned</td></tr>
-            <tr><td>v2: schema and roles, profiles, force-release</td><td class="s todo">planned</td></tr>
-            <tr><td>First release with checksums and build provenance</td><td class="s todo">planned</td></tr>
+            <tr><td>Tickets, claims, leases, comments, validation and discovery</td><td class="s done">released through v0.3.0</td></tr>
+            <tr><td>Concurrency spike: duplicate IDs, dual owners, lost updates and identity violations</td><td class="s done">zero in local runs</td></tr>
+            <tr><td>Whole-ticket sync/restore/commit, exact-base CAS and unknown-push recovery</td><td class="s next">implemented; awaiting next release</td></tr>
+            <tr><td>Real-host performance, multi-clock and long-history measurements</td><td class="s todo">open verification limits</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="caption">If the spike finds a single violation, the build stops until the cause is understood.</p>
+      <p class="caption">No daemon, cache or event store is added without a measured need.</p>
     </section>
 
     <footer>

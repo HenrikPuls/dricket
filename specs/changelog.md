@@ -6,6 +6,9 @@ top-level CHANGELOG.md and are written at release time from this file.
 
 ## Awaiting verification
 
+- R-13 Public collaborative-editing documentation: README workflow and trust
+  model, static landing page workflow/guardrails/status, unreleased changelog;
+  no new release claimed — handed over 2026-11-03.
 - R-12 Collaborative whole-ticket editing (ADR-0009): `claim` → `sync` →
   editor → `commit`; `restore` follows git semantics; exact-base CAS rejects
   stale ticket writes while allowing unrelated commits and comments;

@@ -7,13 +7,10 @@ the items below; milestone numbers are not used.
 
 ## Now
 
-Nothing. R-12 awaits owner verification; only R-13 below remains for its
-public documentation after acceptance.
+Nothing. R-12 and R-13 are implemented and await final verification.
 
 ## Later
 Each has a trigger; without it nothing is built. See "Deliberately deferred" in docs/CONCEPT.md.
-- R-13 Public documentation and landing page for R-12 — trigger: owner
-  acceptance of the verified collaborative editing implementation.
 - R-6 Lamport or hybrid clocks — trigger: offline writing or multiple refs.
 - R-7 Local cache or daemon — trigger: measured slowness.
 - R-8 Messages between agents (`messages/<recipient>/`) — trigger: cases that comments do not cover.
