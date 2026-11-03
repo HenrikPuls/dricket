@@ -49,26 +49,41 @@ func DiscoverFrom(ctx context.Context, dir string) (Discovery, bool, error) {
 	}
 }
 
-// InspectRoot reports whether dir is a store root: a git working tree
-// whose checkout contains dricket.toml. ok is false for plain git
-// repositories, bare repositories and directories without dricket.toml.
+// InspectRoot reports whether dir is a store root: the root of a git working
+// tree with committed config on main or, for compatibility, dricket.toml in
+// the current checkout. ok is false for subdirectories, plain git repositories,
+// bare repositories and directories without either config source.
 func InspectRoot(ctx context.Context, dir string) (Discovery, bool, error) {
-	if _, err := os.Stat(filepath.Join(dir, "dricket.toml")); err != nil {
-		return Discovery{}, false, nil // absent, unreadable, not a root
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return Discovery{}, false, fmt.Errorf("discovery: %w", err)
 	}
+	dir = abs
 	if out, err := runGitEnv(ctx, dir, Options{}, "rev-parse", "--is-inside-work-tree"); err != nil ||
 		strings.TrimSpace(out) != "true" {
-		return Discovery{}, false, nil // dricket.toml without a working tree
+		return Discovery{}, false, nil
+	}
+	root, err := runGitEnv(ctx, dir, Options{}, "rev-parse", "--show-toplevel")
+	if err != nil || filepath.Clean(strings.TrimSpace(root)) != filepath.Clean(dir) {
+		return Discovery{}, false, nil
 	}
 
-	// The branch comes from the config; a broken file does not block
-	// discovery - the default applies and the real error surfaces when
-	// the config is loaded for a write.
-	branch := "tickets"
-	if data, err := os.ReadFile(filepath.Join(dir, "dricket.toml")); err == nil { // #nosec G304 -- fixed name in the inspected directory
-		if cfg, perr := config.Parse(data); perr == nil && cfg.Branch != "" {
-			branch = cfg.Branch
+	committed, gitErr := runGitEnv(ctx, dir, Options{}, "show", "refs/heads/main:dricket.toml")
+	var data []byte
+	if gitErr == nil {
+		data = []byte(committed)
+	} else {
+		data, err = os.ReadFile(filepath.Join(dir, "dricket.toml")) // #nosec G304 -- fixed name in the inspected directory
+		if err != nil {
+			return Discovery{}, false, nil
 		}
+	}
+
+	// A broken file does not block discovery - the default applies and the
+	// real error surfaces when the config is loaded for a write.
+	branch := "tickets"
+	if cfg, perr := config.Parse(data); perr == nil && cfg.Branch != "" {
+		branch = cfg.Branch
 	}
 
 	remote := dir

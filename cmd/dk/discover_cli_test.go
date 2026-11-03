@@ -98,6 +98,24 @@ func TestCLIUseBindsCodeRepo(t *testing.T) {
 	}
 }
 
+func TestCLIDiscoveryFromTicketBranch(t *testing.T) {
+	zeroEnv(t)
+	dir := filepath.Join(t.TempDir(), "store")
+	if code, _, errMsg := runForTest(t, "init", dir, "app"); code != 0 {
+		t.Fatalf("init = %d, %q", code, errMsg)
+	}
+	runGitCmd(t, dir, "switch", "--quiet", "tickets")
+	nested := filepath.Join(dir, "tickets", "app", "0000")
+	if err := os.MkdirAll(nested, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	t.Chdir(nested)
+	code, out, _ := runForTest(t, "use")
+	if code != 0 || !strings.Contains(out, "store:  "+dir+"#tickets") {
+		t.Fatalf("use from ticket branch = %d, %q", code, out)
+	}
+}
+
 func TestCLIPrefixPrecedence(t *testing.T) {
 	zeroEnv(t)
 	dir := filepath.Join(t.TempDir(), "store")
