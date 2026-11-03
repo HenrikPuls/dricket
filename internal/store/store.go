@@ -95,7 +95,8 @@ type Store struct {
 	baseSHA         string // expected old local head for the current attempt
 	hooksPath       string // fixed empty hook path for local shared worktrees
 	localAttempt    int
-	gitConfigGlobal string // empty = ambient user configuration applies
+	localDirty      map[string]bool // user paths dirty at the attempt's refresh
+	gitConfigGlobal string          // empty = ambient user configuration applies
 	gitRunner       gitRunnerFunc
 	sleep           func(time.Duration)
 	hasRef          bool // ticket branch existed at the last refresh

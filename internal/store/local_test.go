@@ -175,6 +175,54 @@ func TestLocalConcurrentDistinctPathsAllLand(t *testing.T) {
 	}
 }
 
+func TestLocalDirtyCheckoutCommentAndConflict(t *testing.T) {
+	ctx := context.Background()
+	dir := initDiscoveryStore(t, "tickets")
+	ticketPath := "tickets/app/0000/app-1/ticket.md"
+	commitVisibleFile(t, dir, ticketPath, "original\n", "ticket")
+	st := openStore(t, dir, "dirty-user", nil)
+
+	localEdit := "local edit must survive\n"
+	if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(ticketPath)), []byte(localEdit), 0o600); err != nil {
+		t.Fatalf("write dirty ticket: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "staged.txt"), []byte("staged\n"), 0o600); err != nil {
+		t.Fatalf("write staged file: %v", err)
+	}
+	runGit(t, dir, "add", "staged.txt")
+
+	commentPath := "tickets/app/0000/app-1/comments/local.md"
+	if err := st.Write(ctx, writeFileSpec(commentPath, "comment\n", nil)); err != nil {
+		t.Fatalf("comment during dirty edit: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(ticketPath))); err != nil || string(got) != localEdit {
+		t.Fatalf("dirty ticket after comment = %q, %v", got, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(commentPath))); err != nil || string(got) != "comment\n" {
+		t.Fatalf("visible comment = %q, %v", got, err)
+	}
+	if staged := runGit(t, dir, "diff", "--cached", "--name-only"); !strings.Contains(staged, "staged.txt") {
+		t.Errorf("staged unrelated change lost: %q", staged)
+	}
+
+	before := strings.TrimSpace(runGit(t, dir, "rev-parse", "refs/heads/tickets"))
+	err := st.Write(ctx, writeFileSpec(ticketPath, "conflicting write\n", nil))
+	var we *WriteError
+	if !errors.As(err, &we) || we.Outcome != CheckoutConflict {
+		t.Fatalf("same-file dirty write err = %v; want CheckoutConflict", err)
+	}
+	if we.Attempts != 1 {
+		t.Errorf("dirty conflict attempts = %d; want no retry", we.Attempts)
+	}
+	after := strings.TrimSpace(runGit(t, dir, "rev-parse", "refs/heads/tickets"))
+	if after != before {
+		t.Errorf("ticket ref moved on dirty conflict: %s -> %s", before, after)
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(ticketPath))); err != nil || string(got) != localEdit {
+		t.Errorf("dirty ticket after conflict = %q, %v", got, err)
+	}
+}
+
 func TestBarePathStoreKeepsPushMode(t *testing.T) {
 	bare := setupBare(t, true)
 	st := openStore(t, bare, "bare-user", nil)

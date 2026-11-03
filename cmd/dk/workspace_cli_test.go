@@ -109,6 +109,41 @@ func TestSyncRestoreAndCommitErrors(t *testing.T) {
 	}
 }
 
+func TestLocalDirtyCheckoutConflictCLI(t *testing.T) {
+	zeroEnv(t)
+	dir := filepath.Join(t.TempDir(), "store")
+	if code, _, errMsg := runForTest(t, "init", dir, "app"); code != 0 {
+		t.Fatalf("init = %d, %q", code, errMsg)
+	}
+	t.Chdir(dir)
+	if code, out, errMsg := runForTest(t, "add", "-c", "old title"); code != 0 {
+		t.Fatalf("add = %d, %q, %q", code, out, errMsg)
+	}
+	editCLICommitTicket(t, dir, "title: old title", "title: local edit")
+	before := strings.TrimSpace(cliGit(t, dir, "rev-parse", "refs/heads/tickets"))
+
+	code, out, errMsg := runForTest(t, "--json", "set", "app-1", "title=conflicting write")
+	if code != exitConflict {
+		t.Fatalf("dirty set = %d, %q, %q; want exit 12", code, out, errMsg)
+	}
+	var response struct {
+		Error struct {
+			Kind     string `json:"kind"`
+			ExitCode int    `json:"exit_code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(out), &response); err != nil || response.Error.Kind != "conflict" || response.Error.ExitCode != 12 {
+		t.Fatalf("dirty conflict JSON = %q, %v", out, err)
+	}
+	if after := strings.TrimSpace(cliGit(t, dir, "rev-parse", "refs/heads/tickets")); after != before {
+		t.Errorf("ticket ref moved: %s -> %s", before, after)
+	}
+	ticketPath := filepath.Join(dir, "tickets", "app", "0000", "app-1", "ticket.md")
+	if content, err := os.ReadFile(ticketPath); err != nil || !strings.Contains(string(content), "title: local edit") {
+		t.Errorf("local edit after conflict = %q, %v", content, err)
+	}
+}
+
 func TestCommitCLIRejectsStoreMismatch(t *testing.T) {
 	_, _ = setupCLIWorkspace(t)
 	other := setupBareCLI(t)

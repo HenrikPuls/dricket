@@ -57,6 +57,9 @@ func (s *Store) initLocal(ctx context.Context) error {
 
 func (s *Store) refreshLocal(ctx context.Context) error {
 	ref := "refs/heads/" + s.opts.branch()
+	if err := s.captureLocalDirty(ctx, ref); err != nil {
+		return err
+	}
 	out, _, err := s.git(ctx, "rev-parse", "--verify", ref+"^{commit}")
 	if err != nil {
 		s.hasRef = false
@@ -96,6 +99,25 @@ func errorsNew(action string, err error) error {
 	return fmt.Errorf("%s: %w", action, err)
 }
 
+var errCheckoutConflict = errors.New("local checkout changes would be overwritten")
+
+func (s *Store) captureLocalDirty(ctx context.Context, ref string) error {
+	s.localDirty = nil
+	checkout, checkedOut, err := s.localTicketCheckout(ctx, ref)
+	if err != nil || !checkedOut {
+		return err
+	}
+	paths, err := (&Workspace{dir: checkout}).dirtyPaths(ctx)
+	if err != nil {
+		return fmt.Errorf("read local checkout status: %w", err)
+	}
+	s.localDirty = make(map[string]bool, len(paths))
+	for _, path := range paths {
+		s.localDirty[path] = true
+	}
+	return nil
+}
+
 func (s *Store) publishLocal(ctx context.Context, candidate, base string, preserve bool) (bool, error) {
 	ref := "refs/heads/" + s.opts.branch()
 	checkout, checkedOut, err := s.localTicketCheckout(ctx, ref)
@@ -116,7 +138,27 @@ func (s *Store) publishLocal(ctx context.Context, candidate, base string, preser
 	if err == nil {
 		return false, nil
 	}
+	if s.localDirtyConflict(ctx, candidate, base, out) {
+		return false, fmt.Errorf("%w: %s", errCheckoutConflict, firstLine(out))
+	}
 	return localPublicationRace(out), fmt.Errorf("local checkout fast-forward: %s", firstLine(out))
+}
+
+func (s *Store) localDirtyConflict(ctx context.Context, candidate, base, output string) bool {
+	lower := strings.ToLower(output)
+	if !strings.Contains(lower, "local changes") && !strings.Contains(lower, "untracked working tree") {
+		return false
+	}
+	out, _, err := s.git(ctx, "diff", "--name-only", base, candidate)
+	if err != nil {
+		return false
+	}
+	for _, path := range lines(out) {
+		if s.localDirty[path] {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) localTicketCheckout(ctx context.Context, ref string) (string, bool, error) {
@@ -142,6 +184,7 @@ func localPublicationRace(output string) bool {
 	for _, fragment := range []string{
 		"non-fast-forward", "not possible to fast-forward", "cannot lock ref",
 		"index.lock", "but expected", "untracked working tree files would be overwritten",
+		"your local changes",
 	} {
 		if strings.Contains(lower, fragment) {
 			return true

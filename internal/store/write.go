@@ -66,6 +66,8 @@ const (
 	// PushUnknown means a transport failure left acceptance unknown and
 	// reconciliation could not prove whether the commit landed.
 	PushUnknown
+	// CheckoutConflict means local user changes prevent a safe fast-forward.
+	CheckoutConflict
 )
 
 func (o Outcome) String() string {
@@ -82,6 +84,8 @@ func (o Outcome) String() string {
 		return "timeout"
 	case PushUnknown:
 		return "push outcome unknown"
+	case CheckoutConflict:
+		return "checkout conflict"
 	}
 	return "unknown"
 }
@@ -184,6 +188,11 @@ func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 		}
 		if publishErr == nil {
 			return nil // accepted
+		}
+		if errors.Is(publishErr, errCheckoutConflict) {
+			werr.Outcome = CheckoutConflict
+			werr.Err = publishErr
+			return werr
 		}
 		if !retryable {
 			werr.Outcome = PushFailed
