@@ -71,6 +71,10 @@ func (w *Workspace) Sync(ctx context.Context) error {
 	if err := checkRefName(ctx, branch); err != nil {
 		return err
 	}
+	origin, err := w.git(ctx, "remote", "get-url", "origin")
+	if err != nil || strings.TrimSpace(origin) == "" {
+		return nil // local stores already share the ticket ref with the workspace
+	}
 	if _, err := w.git(ctx, "fetch", "--quiet", "origin", "refs/heads/"+branch); err != nil {
 		return fmt.Errorf("fetch ticket branch: %w", err)
 	}
@@ -131,14 +135,19 @@ func (w *Workspace) Adopt(ctx context.Context, commit, path, expected string) er
 		return errors.New("workspace is not on a local branch")
 	}
 	branch = strings.TrimSpace(branch)
-	if _, err := w.git(ctx, "fetch", "--quiet", "origin", "refs/heads/"+branch); err != nil {
-		return fmt.Errorf("fetch accepted commit: %w", err)
+	historyRef := "refs/heads/" + branch
+	origin, err := w.git(ctx, "remote", "get-url", "origin")
+	if err == nil && strings.TrimSpace(origin) != "" {
+		if _, err := w.git(ctx, "fetch", "--quiet", "origin", historyRef); err != nil {
+			return fmt.Errorf("fetch accepted commit: %w", err)
+		}
+		historyRef = "FETCH_HEAD"
 	}
 	if _, err := w.git(ctx, "cat-file", "-e", commit+"^{commit}"); err != nil {
-		return errors.New("accepted commit was not fetched")
+		return errors.New("accepted commit is not available in the store")
 	}
-	if _, err := w.git(ctx, "merge-base", "--is-ancestor", commit, "FETCH_HEAD"); err != nil {
-		return errors.New("accepted commit is not in the remote ticket history")
+	if _, err := w.git(ctx, "merge-base", "--is-ancestor", commit, historyRef); err != nil {
+		return errors.New("accepted commit is not in the ticket history")
 	}
 	if _, err := w.git(ctx, "merge-base", "--is-ancestor", "HEAD", commit); err != nil {
 		return errors.New("ticket checkout has unpushed or divergent commits; local history was left unchanged")

@@ -162,6 +162,9 @@ func (s *Store) Dir() string { return s.dir }
 // RemoteBranch returns the selected remote and ticket branch.
 func (s *Store) RemoteBranch() (string, string) { return s.opts.Remote, s.opts.branch() }
 
+// IsLocal reports whether writes publish through local ref CAS instead of push.
+func (s *Store) IsLocal() bool { return s.localDir != "" }
+
 // HeadSHA returns the commit at the private working copy's HEAD.
 func (s *Store) HeadSHA(ctx context.Context) (string, error) {
 	out, _, err := s.git(ctx, "rev-parse", "HEAD")

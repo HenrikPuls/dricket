@@ -85,7 +85,7 @@ func runCommit(e *env, args []string) (any, *cliError) {
 		return nil, wrapErr(err)
 	}
 	if !result.Synced {
-		e.msg("warning: remote commit %s succeeded, but the local checkout was not updated\n", result.Commit)
+		e.msg("warning: commit %s was published, but the local checkout was not updated\n", result.Commit)
 	}
 	if !e.json {
 		e.outf("committed %s (rev %d, commit %s)\n", result.ID, result.Rev, result.Commit)

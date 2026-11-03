@@ -144,6 +144,66 @@ func TestLocalDirtyCheckoutConflictCLI(t *testing.T) {
 	}
 }
 
+func TestLocalCommitCLIWorkflow(t *testing.T) {
+	zeroEnv(t)
+	dir := filepath.Join(t.TempDir(), "store")
+	if code, _, errMsg := runForTest(t, "init", dir, "app"); code != 0 {
+		t.Fatalf("init = %d, %q", code, errMsg)
+	}
+	t.Chdir(dir)
+	if code, out, errMsg := runForTest(t, "add", "-c", "old title"); code != 0 {
+		t.Fatalf("add = %d, %q, %q", code, out, errMsg)
+	}
+	if code, out, errMsg := runForTest(t, "sync"); code != 0 {
+		t.Fatalf("local sync = %d, %q, %q", code, out, errMsg)
+	}
+	editCLICommitTicket(t, dir, "title: old title", "title: local title")
+	t.Setenv("DK_OWNER", "commenter")
+	if code, out, errMsg := runForTest(t, "comment", "app-1", "comment during edit"); code != 0 {
+		t.Fatalf("comment = %d, %q, %q", code, out, errMsg)
+	}
+	t.Setenv("DK_OWNER", "henrik")
+
+	code, out, errMsg := runForTest(t, "--json", "commit", "app-1")
+	if code != 0 {
+		t.Fatalf("local commit = %d, %q, %q", code, out, errMsg)
+	}
+	var response struct {
+		Data struct {
+			Rev    int    `json:"rev"`
+			Commit string `json:"commit"`
+			Synced bool   `json:"synced"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &response); err != nil || response.Data.Rev != 2 || response.Data.Commit == "" || !response.Data.Synced {
+		t.Fatalf("local commit response = %q, %v", out, err)
+	}
+	ticketPath := filepath.Join(dir, "tickets", "app", "0000", "app-1", "ticket.md")
+	if content, err := os.ReadFile(ticketPath); err != nil || !strings.Contains(string(content), "title: local title") || !strings.Contains(string(content), "rev: 2") {
+		t.Fatalf("adopted ticket = %q, %v", content, err)
+	}
+	if code, out, errMsg := runForTest(t, "release", "--stage", "review", "--result", "done", "app-1"); code != 0 {
+		t.Fatalf("local release = %d, %q, %q", code, out, errMsg)
+	}
+
+	editCLICommitTicket(t, dir, "title: local title", "title: dirty sync")
+	if code, _, _ := runForTest(t, "sync"); code != exitError {
+		t.Fatalf("dirty local sync = %d; want exit 1", code)
+	}
+	if content, err := os.ReadFile(ticketPath); err != nil || !strings.Contains(string(content), "title: dirty sync") {
+		t.Fatalf("dirty sync overwrote ticket: %q, %v", content, err)
+	}
+	if code, _, _ := runForTest(t, "restore", "tickets/app/0000/app-1/ticket.md"); code != 0 {
+		t.Fatalf("restore after dirty sync = %d", code)
+	}
+	if code, _, errMsg := runForTest(t, "sync"); code != 0 {
+		t.Fatalf("clean local sync = %d, %q", code, errMsg)
+	}
+	if code, out, errMsg := runForTest(t, "doctor"); code != 0 || strings.Contains(out, "dry-run push") {
+		t.Fatalf("local doctor = %d, %q, %q", code, out, errMsg)
+	}
+}
+
 func TestCommitCLIRejectsStoreMismatch(t *testing.T) {
 	_, _ = setupCLIWorkspace(t)
 	other := setupBareCLI(t)
