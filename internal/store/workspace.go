@@ -58,7 +58,7 @@ func (w *Workspace) git(ctx context.Context, args ...string) (string, error) {
 	return string(out), err
 }
 
-// Sync fetches the current ticket branch and fast-forwards a clean checkout.
+// Sync fast-forwards a clean checkout; local stores already share the ref.
 func (w *Workspace) Sync(ctx context.Context) error {
 	if err := w.requireClean(ctx); err != nil {
 		return err

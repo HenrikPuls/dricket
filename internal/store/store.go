@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Package store is dricket's only gateway to Git: it owns a private
-// working copy outside any project directory, runs git as a subprocess
-// (ADR-0002) and implements the write protocol of docs/CONCEPT.md - fetch,
-// check preconditions on the fresh head, commit on top, push, and on a
-// rejected push retry with exponential backoff and jitter. Never rebase.
 package store
 
 import (

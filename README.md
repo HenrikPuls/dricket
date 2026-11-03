@@ -1,23 +1,23 @@
 <h1 align="center">dricket</h1>
 
-<p align="center"><strong>Tickets that live in Git. Claimed by push. Safe for humans and agents.</strong></p>
+<p align="center"><strong>Tickets that live in Git. Claimed by fast-forward. Safe for humans and agents.</strong></p>
 
 <p align="center">
   <a href="https://github.com/HenrikPuls/dricket/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/HenrikPuls/dricket/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: GPL v3 or later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue"></a>
-  <img alt="Release: v0.3.0" src="https://img.shields.io/badge/release-v0.3.0-blue">
+  <img alt="Release: v0.4.0" src="https://img.shields.io/badge/release-v0.4.0-blue">
 </p>
 
 dricket is a ticketing system with no server. Every ticket is a Markdown file in
 a Git repository, and the one thing that matters when many people and AI agents
-work at once, *who is working on this right now*, is decided by Git itself: a
-push either lands or it does not.
+work at once, *who is working on this right now*, is decided by Git itself: only
+one fast-forward publication lands.
 
 A person can read and edit a ticket in any editor. An agent gets a small,
 strict command line that keeps it from stepping on anyone else's work. Both
 use the same files.
 
-> **Status: early release (v0.3.0).** The design is specified in
+> **Status: early release (v0.4.0).** The design is specified in
 > [docs/CONCEPT.md](docs/CONCEPT.md); stages v0 to v2 are implemented and
 > released. Later stages (messages, skills, lease services) are deliberately
 > deferred, each with the trigger that would build them. See [Status](#status).
@@ -25,8 +25,8 @@ use the same files.
 ## Why dricket
 
 - **No server to run.** Your Git host is the database and the lock manager.
-- **One atomic claim.** Claiming a ticket is a push. Exactly one claimant wins;
-  the others are told so, immediately.
+- **One atomic claim.** Claiming a ticket is a fast-forward publication. Exactly
+  one claimant wins; the others are told so, immediately.
 - **Plain Markdown you can edit as a whole file.** Claim, sync, use any editor,
   and publish with `dk commit`.
 - **Collaboration without ticket conflicts.** Anyone can add a separate comment
@@ -91,19 +91,24 @@ for linux, macOS and Windows on amd64 and arm64, plus `checksums.txt`
 **`go install`** builds from the module and installs `dk` directly:
 
 ```console
-go install github.com/HenrikPuls/dricket/cmd/dk@v0.3.0
+go install github.com/HenrikPuls/dricket/cmd/dk@v0.4.0
 ```
 
 Make sure the Go bin directory (`go env GOPATH` + `/bin`, on Windows
 `%USERPROFILE%\go\bin`) is on your `PATH`. `git` (2.32 or newer) must be
 installed.
 
-Set up a store and point the tool at it:
+Set up a local store with one project prefix and work directly in its ticket
+checkout:
 
 ```console
-dk init tickets-store
-dk --store tickets-store#tickets add --prefix app -c "First ticket"
+dk init tickets-store app
+cd tickets-store
+dk add -c "First ticket"
 ```
+
+No store flag or binding is needed inside that repository. Configuration stays
+on `main`; discovery reads it from Git while `tickets` is checked out.
 
 ## How it works
 
@@ -141,7 +146,7 @@ protocol are in [docs/protocol.md](docs/protocol.md).
   code repository, `dk use --store <path>#tickets` and `dk use <prefix>`
   write the binding once.
 - Exit codes are part of the contract: `11` already claimed, `12` same-ticket
-  conflict with local work preserved, `13` claim lost (**stop immediately**),
+  or local checkout conflict with local work preserved, `13` claim lost (**stop immediately**),
   `14` invalid document or transition, `15` definite network/push failure or
   `outcome-unknown`, `16` tool too old.
 - `dk guide` prints version-matched instructions; `dk setup-agent` adds a

@@ -8,6 +8,17 @@ listed here.
 
 ## [Unreleased]
 
+### Added
+- Single-repository local operation: non-bare filesystem stores publish through
+  atomic fast-forward ref updates, while remote and bare stores keep push CAS
+  (ADR-0010).
+
+### Changed
+- `dk init` leaves the ticket branch checked out, and discovery reads committed
+  configuration from `main` even from nested ticket directories.
+- Local writes preserve unrelated and staged edits; a pre-existing same-file
+  checkout conflict reports `conflict` with exit 12.
+
 ## [0.4.0] - 2026-11-03
 
 ### Added

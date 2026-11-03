@@ -84,7 +84,7 @@ func TestLocalWriteWithMainCheckedOut(t *testing.T) {
 	if got := strings.TrimSpace(runGit(t, dir, "symbolic-ref", "--short", "HEAD")); got != "main" {
 		t.Errorf("visible branch = %q; want main", got)
 	}
-	if content, err := os.ReadFile(filepath.Join(dir, "dricket.toml")); err != nil || !strings.Contains(string(content), "schema_version") {
+	if content, err := os.ReadFile(filepath.Join(dir, "dricket.toml")); err != nil || !strings.Contains(string(content), "schema_version") { // #nosec G304 -- test-controlled temporary path
 		t.Errorf("main checkout changed: %q, %v", content, err)
 	}
 }
@@ -195,10 +195,11 @@ func TestLocalDirtyCheckoutCommentAndConflict(t *testing.T) {
 	if err := st.Write(ctx, writeFileSpec(commentPath, "comment\n", nil)); err != nil {
 		t.Fatalf("comment during dirty edit: %v", err)
 	}
+	// #nosec G304 -- test-controlled temporary path
 	if got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(ticketPath))); err != nil || string(got) != localEdit {
 		t.Fatalf("dirty ticket after comment = %q, %v", got, err)
 	}
-	if got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(commentPath))); err != nil || string(got) != "comment\n" {
+	if got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(commentPath))); err != nil || string(got) != "comment\n" { // #nosec G304 -- test-controlled temporary path
 		t.Fatalf("visible comment = %q, %v", got, err)
 	}
 	if staged := runGit(t, dir, "diff", "--cached", "--name-only"); !strings.Contains(staged, "staged.txt") {
@@ -218,6 +219,7 @@ func TestLocalDirtyCheckoutCommentAndConflict(t *testing.T) {
 	if after != before {
 		t.Errorf("ticket ref moved on dirty conflict: %s -> %s", before, after)
 	}
+	// #nosec G304 -- test-controlled temporary path
 	if got, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(ticketPath))); err != nil || string(got) != localEdit {
 		t.Errorf("dirty ticket after conflict = %q, %v", got, err)
 	}

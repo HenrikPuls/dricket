@@ -139,6 +139,7 @@ func TestLocalDirtyCheckoutConflictCLI(t *testing.T) {
 		t.Errorf("ticket ref moved: %s -> %s", before, after)
 	}
 	ticketPath := filepath.Join(dir, "tickets", "app", "0000", "app-1", "ticket.md")
+	// #nosec G304 -- test-controlled temporary path
 	if content, err := os.ReadFile(ticketPath); err != nil || !strings.Contains(string(content), "title: local edit") {
 		t.Errorf("local edit after conflict = %q, %v", content, err)
 	}
@@ -179,6 +180,7 @@ func TestLocalCommitCLIWorkflow(t *testing.T) {
 		t.Fatalf("local commit response = %q, %v", out, err)
 	}
 	ticketPath := filepath.Join(dir, "tickets", "app", "0000", "app-1", "ticket.md")
+	// #nosec G304 -- test-controlled temporary path
 	if content, err := os.ReadFile(ticketPath); err != nil || !strings.Contains(string(content), "title: local title") || !strings.Contains(string(content), "rev: 2") {
 		t.Fatalf("adopted ticket = %q, %v", content, err)
 	}
@@ -190,6 +192,7 @@ func TestLocalCommitCLIWorkflow(t *testing.T) {
 	if code, _, _ := runForTest(t, "sync"); code != exitError {
 		t.Fatalf("dirty local sync = %d; want exit 1", code)
 	}
+	// #nosec G304 -- test-controlled temporary path
 	if content, err := os.ReadFile(ticketPath); err != nil || !strings.Contains(string(content), "title: dirty sync") {
 		t.Fatalf("dirty sync overwrote ticket: %q, %v", content, err)
 	}

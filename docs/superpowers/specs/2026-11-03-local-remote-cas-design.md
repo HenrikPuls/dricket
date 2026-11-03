@@ -164,9 +164,11 @@ while leaving an otherwise clean checkout stale.
 Local changes that would be overwritten make publication fail without
 discarding them. The command reports error kind `conflict` with existing exit
 12. This is a local checkout conflict, not a concurrent-ref race, and must not
-be retried until the retry budget expires. Non-conflicting dirty
-paths, including an edited `ticket.md` during an add-only comment write, must
-survive and the comment must become visible.
+be retried until the retry budget expires. The attempt captures dirty paths at
+refresh: a conflicting path already present then is a user conflict, while a
+path first created by another in-flight publisher is a retryable race.
+Non-conflicting dirty paths, including an edited `ticket.md` during an add-only
+comment write, must survive and the comment must become visible.
 
 ### Ticket ref checked out: whole-ticket commit
 

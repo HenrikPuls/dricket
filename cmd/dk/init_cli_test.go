@@ -3,7 +3,6 @@ package main
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,8 +15,8 @@ func TestCLIInitInDirectory(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "initialized ticket store in") {
 		t.Fatalf("init = %d, %q, %q", code, out, errMsg)
 	}
-	if out, err := exec.Command("git", "-C", dir, "symbolic-ref", "--quiet", "--short", "HEAD").Output(); err != nil || strings.TrimSpace(string(out)) != "tickets" {
-		t.Fatalf("checked-out branch = %q, %v; want tickets", out, err)
+	if out := cliGit(t, dir, "symbolic-ref", "--quiet", "--short", "HEAD"); strings.TrimSpace(out) != "tickets" {
+		t.Fatalf("checked-out branch = %q; want tickets", out)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "dricket.toml")); !os.IsNotExist(err) {
 		t.Fatalf("dricket.toml must stay on main; stat err = %v", err)
@@ -33,8 +32,11 @@ func TestCLIInitInDirectory(t *testing.T) {
 		t.Fatalf("add in fresh store = %d, %q", code, out)
 	}
 	ticketPath := filepath.Join(dir, "tickets", "app", "0000", "app-1", "ticket.md")
-	if content, err := os.ReadFile(ticketPath); err != nil || !strings.Contains(string(content), "title: first ticket") {
+	if content, err := os.ReadFile(ticketPath); err != nil || !strings.Contains(string(content), "title: first ticket") { // #nosec G304 -- test-controlled temporary path
 		t.Fatalf("visible ticket = %q, %v", content, err)
+	}
+	if code, out, _ := runForTest(t, "use"); code != 0 || !strings.Contains(out, "prefix: app (prefixes.toml (single registered prefix))") {
+		t.Fatalf("use after init = %d, %q; want registered prefix app", code, out)
 	}
 
 	// A second init into the same directory is refused.
@@ -63,12 +65,12 @@ func TestCLIInitCustomBranchChecksOutTicketBranch(t *testing.T) {
 	if code, _, errMsg := runForTest(t, "init", "--branch", "work", dir, "app"); code != 0 {
 		t.Fatalf("init = %d, %q", code, errMsg)
 	}
-	out, err := exec.Command("git", "-C", dir, "symbolic-ref", "--quiet", "--short", "HEAD").Output()
-	if err != nil || strings.TrimSpace(string(out)) != "work" {
-		t.Fatalf("checked-out branch = %q, %v; want work", out, err)
+	out := cliGit(t, dir, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if strings.TrimSpace(out) != "work" {
+		t.Fatalf("checked-out branch = %q; want work", out)
 	}
-	if out, err := exec.Command("git", "-C", dir, "show", "main:dricket.toml").Output(); err != nil || !strings.Contains(string(out), `branch = "work"`) {
-		t.Fatalf("main config = %q, %v", out, err)
+	if out := cliGit(t, dir, "show", "main:dricket.toml"); !strings.Contains(out, `branch = "work"`) {
+		t.Fatalf("main config = %q", out)
 	}
 	t.Chdir(dir)
 	t.Setenv("DK_STORE", "")

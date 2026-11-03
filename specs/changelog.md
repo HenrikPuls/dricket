@@ -6,6 +6,17 @@ top-level CHANGELOG.md and are written at release time from this file.
 
 ## Awaiting verification
 
+- R-14 Single-repository local operation (ADR-0010): init checks out the ticket
+  branch; discovery reads committed main config at the actual Git root;
+  non-bare local stores use a private linked worktree, immutable base snapshots
+  and expected-old ref CAS, with safe checked-out fast-forwards for ordinary
+  writes and guarded adoption for whole-ticket commits. Remote/bare push CAS is
+  unchanged. Tests: default/custom branch discovery and init, local config and
+  snapshot stability, main-checked-out compatibility, concurrent claims and
+  distinct writes, comments and staged changes during dirty edits, exit-12
+  same-file conflicts, complete local claim/sync/comment/commit/release, local
+  doctor and effective `dk use` resolution. Focused package suites and real CLI flows pass; full gate and CI
+  race runs are recorded at handover — handed over 2026-11-03.
 - Skeleton: R-0 — handed over 2026-11-02
 - Infrastructure and Phase 0: public repository published (CI green, rulesets active, Pages live), roadmap and architecture refined — handed over 2026-11-02
 - Spike: R-1 — handed over 2026-11-02

@@ -14,8 +14,8 @@ import (
 	"time"
 )
 
-// Head is read access to the fresh remote head, given to preconditions.
-// It sees the state after the latest fetch, never a stale local branch.
+// Head is read access to the immutable attempt base, given to preconditions.
+// It sees the state after the latest refresh, never a moving public branch.
 type Head interface {
 	// Has reports whether a path exists on the head.
 	Has(path string) (bool, error)
@@ -113,10 +113,10 @@ func (e *WriteError) Error() string {
 
 func (e *WriteError) Unwrap() error { return e.Err }
 
-// Write runs the protocol of docs/CONCEPT.md: fetch, check preconditions
-// on the fresh head, mutate, commit, push; on a rejected push back off and
-// start over from a fresh fetch. Never rebase. A nil return means the push
-// was accepted; every other end is a *WriteError.
+// Write runs the protocol of docs/CONCEPT.md: refresh an immutable base, check
+// preconditions, mutate, commit and publish by remote push or local ref CAS.
+// A concurrent rejection retries from a fresh base. Never rebase. A nil return
+// means publication was accepted; every other end is a *WriteError.
 func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 	ctx, cancel := context.WithTimeout(ctx, s.opts.TotalTimeout)
 	defer cancel()

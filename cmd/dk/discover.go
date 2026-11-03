@@ -206,7 +206,14 @@ func runUse(e *env, args []string) (any, *cliError) {
 	if cerr != nil {
 		return nil, cerr
 	}
-	prefix, prefixSrc, perr := e.prefixForAdd(ctx, "", nil)
+	var s *service.Service
+	if spec != "" {
+		s, cerr = e.svc()
+		if cerr != nil {
+			return nil, cerr
+		}
+	}
+	prefix, prefixSrc, perr := e.prefixForAdd(ctx, "", s)
 	if perr != nil {
 		return nil, perr
 	}

@@ -7,7 +7,7 @@
 <style>:root{color-scheme:light;padding-block:env(safe-area-inset-top,0px) env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>dricket – Git-native ticketing</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="dricket is a Git-native ticketing system for humans and AI agents. Claims by push, no server.">
+<meta name="description" content="dricket is a Git-native ticketing system for humans and AI agents. Claims by fast-forward CAS, no server.">
 <style>
 /* Layout concept: one long page set like a spec sheet. A ticket card with a live claim race
    carries the hero, everything below is ruled sections with mono labels. System fonts only,
@@ -159,7 +159,7 @@ footer { border-top: 1px solid var(--line); padding-top: 28px; color: var(--mute
   <main>
     <div class="hero">
       <div>
-        <h1>Tickets that live in Git. <em>Claimed by push.</em> Safe for humans and agents.</h1>
+        <h1>Tickets that live in Git. <em>Claimed by fast-forward.</em> Safe for humans and agents.</h1>
         <p class="lede">dricket is a ticketing system with no server. Each ticket is a Markdown file. When two runners reach for the same ticket, Git decides who gets it, and the other one is told immediately.</p>
         <div class="cta">
           <a class="btn primary" href="https://github.com/HenrikPuls/dricket">View on GitHub</a>
@@ -189,12 +189,12 @@ footer { border-top: 1px solid var(--line); padding-top: 28px; color: var(--mute
 
     <section id="how">
       <p class="label">How it works</p>
-      <h2>The push is the lock.</h2>
+      <h2>The fast-forward is the lock.</h2>
       <div class="flow">
-        <div><code>1 &middot; fetch</code><p>Runner A reads the current state of the ticket branch.</p></div>
+        <div><code>1 &middot; refresh</code><p>Runner A reads an immutable snapshot of the ticket branch.</p></div>
         <div><code>2 &middot; commit</code><p>A writes its claim on top: owner, lease, a new epoch.</p></div>
-        <div><code>3 &middot; push</code><p>Git accepts exactly one push that is a fast-forward.</p></div>
-        <div><code>4 &middot; retry</code><p>B's push is rejected. B fetches, sees A owns the ticket, and moves on.</p></div>
+        <div><code>3 &middot; publish</code><p>Git accepts exactly one fast-forward, by remote push or local ref CAS.</p></div>
+        <div><code>4 &middot; retry</code><p>B's publication is rejected. B refreshes, sees A owns the ticket, and moves on.</p></div>
       </div>
       <div class="cols" style="margin-top:40px">
         <div><h3>No server to run</h3><p>Your Git host is the database and the lock manager. Nothing else to deploy, patch or monitor.</p></div>
