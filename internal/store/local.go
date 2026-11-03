@@ -176,7 +176,7 @@ func (s *Store) publishLocal(ctx context.Context, candidate, base string, preser
 		return localPublicationRace(stderr), fmt.Errorf("local ref update: %s", firstLine(stderr))
 	}
 
-	out, err := runGitEnv(ctx, checkout, s.opts,
+	out, err := s.gitAt(ctx, checkout, s.opts,
 		"-c", "core.hooksPath="+s.hooksPath,
 		"merge", "--ff-only", "--quiet", candidate)
 	if err == nil {

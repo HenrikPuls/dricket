@@ -79,6 +79,7 @@ func (o *Options) fillDefaults() {
 }
 
 type gitRunnerFunc func(context.Context, ...string) (string, string, error)
+type gitAtFunc func(context.Context, string, Options, ...string) (string, error)
 
 // Store is a private working copy plus the git access around it. It is not
 // safe for concurrent use; processes and profiles each get their own.
@@ -93,6 +94,7 @@ type Store struct {
 	localDirty      map[string]bool // user paths dirty at the attempt's refresh
 	gitConfigGlobal string          // empty = ambient user configuration applies
 	gitRunner       gitRunnerFunc
+	gitAt           gitAtFunc
 	sleep           func(time.Duration)
 	hasRef          bool // ticket branch existed at the last refresh
 	rand            *rand.Rand
@@ -125,7 +127,7 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 		return nil, fmt.Errorf("store: working copy dir: %w", err)
 	}
 
-	s := &Store{opts: opts, dir: dir, headRev: "FETCH_HEAD", sleep: time.Sleep}
+	s := &Store{opts: opts, dir: dir, headRev: "FETCH_HEAD", gitAt: runGitEnv, sleep: time.Sleep}
 	if localDir, ok := localWorkingRepository(ctx, opts.Remote); ok {
 		s.localDir = localDir
 		s.headRev = "HEAD"

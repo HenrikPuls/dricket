@@ -175,6 +175,68 @@ func TestLocalConcurrentDistinctPathsAllLand(t *testing.T) {
 	}
 }
 
+func TestLocalUpdateRefAcceptedErrorReconciles(t *testing.T) {
+	dir := initDiscoveryStore(t, "tickets")
+	runGit(t, dir, "switch", "--quiet", "main")
+	st := openStore(t, dir, "lost-update-response", nil)
+	st.gitRunner = func(ctx context.Context, args ...string) (string, string, error) {
+		out, stderr, err := st.execGit(ctx, args...)
+		if args[0] == "update-ref" && err == nil {
+			return out, "cannot lock ref", errors.New("lost response after accepted update")
+		}
+		return out, stderr, err
+	}
+	if err := st.Write(context.Background(), writeFileSpec("tickets/accepted.txt", "accepted\n", nil)); err != nil {
+		t.Fatalf("accepted local write returned %v", err)
+	}
+	if got := strings.TrimSpace(runGit(t, dir, "rev-list", "--count", "refs/heads/tickets")); got != "2" {
+		t.Errorf("commits after reconciliation = %s; want 2", got)
+	}
+}
+
+func TestLocalMergeAcceptedErrorReconciles(t *testing.T) {
+	dir := initDiscoveryStore(t, "tickets")
+	st := openStore(t, dir, "lost-merge-response", nil)
+	st.gitAt = func(ctx context.Context, dir string, opts Options, args ...string) (string, error) {
+		out, err := runGitEnv(ctx, dir, opts, args...)
+		if err == nil && len(args) > 0 && args[0] == "merge" {
+			return out, errors.New("cannot lock ref after accepted merge")
+		}
+		return out, err
+	}
+	if err := st.Write(context.Background(), writeFileSpec("tickets/accepted.txt", "accepted\n", nil)); err != nil {
+		t.Fatalf("accepted merge returned %v", err)
+	}
+	if got := strings.TrimSpace(runGit(t, dir, "rev-list", "--count", "refs/heads/tickets")); got != "2" {
+		t.Errorf("commits after merge reconciliation = %s; want 2", got)
+	}
+}
+
+func TestLocalExpectedOldRaceRetries(t *testing.T) {
+	dir := initDiscoveryStore(t, "tickets")
+	runGit(t, dir, "switch", "--quiet", "main")
+	st := openStore(t, dir, "expected-old", nil)
+	raced := false
+	st.gitRunner = func(ctx context.Context, args ...string) (string, string, error) {
+		if args[0] == "update-ref" && !raced {
+			raced = true
+			runGit(t, dir, "switch", "--quiet", "tickets")
+			commitVisibleFile(t, dir, "tickets/other.txt", "other\n", "external writer")
+			runGit(t, dir, "switch", "--quiet", "main")
+		}
+		return st.execGit(ctx, args...)
+	}
+	if err := st.Write(context.Background(), writeFileSpec("tickets/ours.txt", "ours\n", nil)); err != nil {
+		t.Fatalf("write after expected-old race: %v", err)
+	}
+	if !raced {
+		t.Fatal("expected-old race was not injected")
+	}
+	if got := runGit(t, dir, "show", "refs/heads/tickets:tickets/ours.txt"); got != "ours\n" {
+		t.Errorf("our content = %q", got)
+	}
+}
+
 func TestLocalDirtyCheckoutCommentAndConflict(t *testing.T) {
 	ctx := context.Background()
 	dir := initDiscoveryStore(t, "tickets")

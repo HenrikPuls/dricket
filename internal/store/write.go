@@ -194,25 +194,32 @@ func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 			werr.Err = publishErr
 			return werr
 		}
-		if !retryable {
-			werr.Outcome = PushFailed
-			werr.PushStderr = publishOutput
-			if s.localDir == "" && definitePushFailure(publishOutput) {
-				return werr
-			}
-			var accepted bool
-			var reconcileErr error
-			if s.localDir != "" {
-				accepted, reconcileErr = s.reconcileLocal(ctx, commit)
-			} else {
-				accepted, reconcileErr = s.reconcilePush(ctx, commit)
-			}
+		if s.localDir != "" {
+			accepted, reconcileErr := s.reconcileLocal(ctx, commit)
 			if accepted {
 				return nil
 			}
 			if reconcileErr != nil {
 				werr.Outcome = PushUnknown
 				werr.Err = fmt.Errorf("%s; reconciliation failed: %w", firstLine(publishOutput), reconcileErr)
+				return werr
+			}
+		}
+		if !retryable {
+			werr.Outcome = PushFailed
+			werr.PushStderr = publishOutput
+			if s.localDir == "" && definitePushFailure(publishOutput) {
+				return werr
+			}
+			if s.localDir == "" {
+				accepted, reconcileErr := s.reconcilePush(ctx, commit)
+				if accepted {
+					return nil
+				}
+				if reconcileErr != nil {
+					werr.Outcome = PushUnknown
+					werr.Err = fmt.Errorf("%s; reconciliation failed: %w", firstLine(publishOutput), reconcileErr)
+				}
 			}
 			return werr
 		}
