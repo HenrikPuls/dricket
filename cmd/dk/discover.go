@@ -246,3 +246,21 @@ func normalizeSpec(spec string) string {
 	}
 	return remote
 }
+
+// sameSpec reports whether two store specs name the same remote and branch.
+// Local remotes are compared by file identity, because Git reports canonical
+// paths while the caller may hold another spelling (Windows 8.3 short names).
+func sameSpec(a, b string) bool {
+	if normalizeSpec(a) == normalizeSpec(b) {
+		return true
+	}
+	ra, ba, _ := strings.Cut(a, "#")
+	rb, bb, _ := strings.Cut(b, "#")
+	if ba != bb || strings.Contains(ra, "://") || strings.Contains(rb, "://") ||
+		strings.HasPrefix(ra, "git@") || strings.HasPrefix(rb, "git@") {
+		return false
+	}
+	ia, erra := os.Stat(ra)
+	ib, errb := os.Stat(rb)
+	return erra == nil && errb == nil && os.SameFile(ia, ib)
+}

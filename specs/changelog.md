@@ -54,6 +54,15 @@ top-level CHANGELOG.md and are written at release time from this file.
 
 ## Shipped
 
+### Windows CI: path identity instead of path strings (2026-11-04)
+The Windows job added with R-13 failed on the hosted runner, whose temp
+directory is an 8.3 short path (`RUNNER~1`) while Git reports the long
+form. Store discovery, the local-store ownership check and the workspace
+vs. selected-store check compared path strings and found "no store". They
+now compare file identity (`samePath`, `sameSpec`). Tests: `TestSamePath`;
+the existing discovery, local-store and workspace tests reproduce the
+failure when run with `TMP` set to a short path and pass with the fix.
+
 ### R-25 Strict claim surface (2026-11-04)
 Owner decision after R-24: the promise "no write without a claim" holds
 without an exception for anyone. `set` and `move` removed; `put` is the

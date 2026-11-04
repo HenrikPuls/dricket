@@ -34,7 +34,7 @@ func TestLocalStoreUsesLinkedWorktreeAndSnapshot(t *testing.T) {
 	base := commitVisibleFile(t, dir, "base.txt", "before\n", "base")
 	st := openStore(t, dir, "local", nil)
 
-	if st.localDir != dir {
+	if !samePath(st.localDir, dir) {
 		t.Errorf("localDir = %q; want %q", st.localDir, dir)
 	}
 	if st.headRev != "HEAD" {
@@ -44,7 +44,7 @@ func TestLocalStoreUsesLinkedWorktreeAndSnapshot(t *testing.T) {
 		t.Errorf("private worktree is attached to branch %q; want detached HEAD", got)
 	}
 	common := filepath.Clean(strings.TrimSpace(runGit(t, st.Dir(), "rev-parse", "--git-common-dir")))
-	if common != filepath.Join(dir, ".git") {
+	if !samePath(common, filepath.Join(dir, ".git")) {
 		t.Errorf("common git dir = %q; want %q", common, filepath.Join(dir, ".git"))
 	}
 

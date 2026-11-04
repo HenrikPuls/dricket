@@ -30,7 +30,7 @@ func selectedWorkspace(e *env) (*store.Workspace, *service.Service, *cliError) {
 		return nil, nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 	}
 	storeRemote, storeBranch := s.Store.RemoteBranch()
-	if normalizeSpec(workspaceRemote+"#"+workspaceBranch) != normalizeSpec(storeRemote+"#"+storeBranch) {
+	if !sameSpec(workspaceRemote+"#"+workspaceBranch, storeRemote+"#"+storeBranch) {
 		return nil, nil, usageError("ticket checkout does not match the selected store")
 	}
 	return ws, s, nil

@@ -49,7 +49,7 @@ func (s *Store) initLocal(ctx context.Context) error {
 		if !filepath.IsAbs(expected) {
 			expected = filepath.Join(s.localDir, expected)
 		}
-		if filepath.Clean(common) != filepath.Clean(expected) {
+		if !samePath(common, expected) {
 			return fmt.Errorf("store: local working copy %s belongs to another repository", s.dir)
 		}
 		return nil
