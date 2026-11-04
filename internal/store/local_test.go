@@ -287,6 +287,22 @@ func TestLocalDirtyCheckoutCommentAndConflict(t *testing.T) {
 	}
 }
 
+func TestLocalStoreReopensFromLinkedWorktree(t *testing.T) {
+	dir := initDiscoveryStore(t, "tickets")
+	runGit(t, dir, "switch", "--quiet", "main")
+	linked := filepath.Join(t.TempDir(), "linked")
+	runGit(t, dir, "worktree", "add", "--quiet", linked, "tickets")
+	dataDir := t.TempDir()
+	for attempt := 1; attempt <= 2; attempt++ {
+		st := openStore(t, linked, "linked-user", func(o *Options) {
+			o.DataDir = dataDir
+		})
+		if err := st.Refresh(context.Background()); err != nil {
+			t.Fatalf("open/refresh attempt %d: %v", attempt, err)
+		}
+	}
+}
+
 func TestBarePathStoreKeepsPushMode(t *testing.T) {
 	bare := setupBare(t, true)
 	st := openStore(t, bare, "bare-user", nil)

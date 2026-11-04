@@ -37,8 +37,19 @@ func localWorkingRepository(ctx context.Context, remote string) (string, bool) {
 
 func (s *Store) initLocal(ctx context.Context) error {
 	if out, _, err := s.git(ctx, "rev-parse", "--git-common-dir"); err == nil {
-		common := filepath.Clean(strings.TrimSpace(out))
-		if common != filepath.Join(s.localDir, ".git") {
+		common := strings.TrimSpace(out)
+		if !filepath.IsAbs(common) {
+			common = filepath.Join(s.dir, common)
+		}
+		selected, selectedErr := runGitEnv(ctx, s.localDir, s.opts, "rev-parse", "--git-common-dir")
+		if selectedErr != nil {
+			return fmt.Errorf("store: resolve local common Git dir: %w", selectedErr)
+		}
+		expected := strings.TrimSpace(selected)
+		if !filepath.IsAbs(expected) {
+			expected = filepath.Join(s.localDir, expected)
+		}
+		if filepath.Clean(common) != filepath.Clean(expected) {
 			return fmt.Errorf("store: local working copy %s belongs to another repository", s.dir)
 		}
 		return nil
