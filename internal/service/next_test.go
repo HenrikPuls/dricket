@@ -53,9 +53,7 @@ func TestNextEligibility(t *testing.T) {
 	_, _ = alice.Add(ctx, AddRequest{Prefix: "app", Title: "second"})
 	// app-3: open but depends on app-2 (in-progress) -> not eligible.
 	id3, _ := alice.Add(ctx, AddRequest{Prefix: "app", Title: "blocked by second", Unclaimed: true})
-	if _, err := alice.Set(ctx, id3, "depends", "app-2", 0); err != nil {
-		t.Fatalf("set depends: %v", err)
-	}
+	putField(t, alice, bare, id3, "depends", "app-2")
 	// ops-1: other prefix, eligible but app sorts first.
 	_, _ = alice.Add(ctx, AddRequest{Prefix: "ops", Title: "opsy", Unclaimed: true})
 

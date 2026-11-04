@@ -13,17 +13,16 @@ const shortClaimMark = " (short claim)"
 // ticket must be unclaimed, because the claim is taken and released
 // inside the one commit. A foreign claim is refused exactly like before
 // (exit 11); the own claim needs no short claim; --force is the
-// exception path and excludes --claim. Every kind may write this way —
-// the claim replaces the human/admin exception of a plain put or move.
-func (s *Service) checkShortClaim(fresh ticket.Ticket, force bool, id, verb string) error {
+// exception path and excludes --claim.
+func (s *Service) checkShortClaim(fresh ticket.Ticket, force bool, id string) error {
 	if force {
-		return errf(KindInvalid, "%s: --claim and --force exclude each other; --claim is the path without an exception", verb)
+		return errf(KindInvalid, "put: --claim and --force exclude each other; --claim is the path without an exception")
 	}
 	switch fresh.Owner {
 	case "":
 		return nil
 	case s.Owner:
-		return errf(KindInvalid, "%s: you already hold the claim on %s; --claim is for unclaimed tickets", verb, id)
+		return errf(KindInvalid, "put: you already hold the claim on %s; --claim is for unclaimed tickets", id)
 	default:
 		return errf(KindClaimed, "ticket %s is claimed by %s (lease until %s)",
 			id, fresh.Owner, stamp(fresh.LeaseUntil))

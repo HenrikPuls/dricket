@@ -45,7 +45,11 @@ func TestCLINextSearchValidate(t *testing.T) {
 
 	// A dangling dependency is exactly what validate catches and lint
 	// cannot see.
-	runForTest(t, "set", "app-2", "depends=app-99")
+	if code, _, _ := putCLI(t, "app-2", 0, func(content string) string {
+		return strings.Replace(content, "depends: ", "depends: app-99", 1)
+	}); code != 0 {
+		t.Fatalf("put depends = %d", code)
+	}
 	code, _, errMsg = runForTest(t, "validate")
 	if code != exitInvalid || !strings.Contains(errMsg, "validate found 1 error") {
 		t.Fatalf("validate dangling = %d, %q; want 14", code, errMsg)

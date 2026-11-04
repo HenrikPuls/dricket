@@ -73,10 +73,11 @@ Workflow
   dk sync                          refresh and fast-forward a clean checkout
   dk restore <path>                discard local changes without fetching
   dk commit <id>                   validate and publish the edited ticket
+                                   (--release frees the claim in the same commit)
   dk extend <id> -m "..."          need more time; the store limits this
   dk note <id> -m "..."            progress note, claim stays
   dk release <id> --stage review -m "..."          hand it back
-  dk set <id> depends=app-7        targeted field mutation
+  dk put <id> -F ticket.md --claim --if-version N  whole-ticket write, no checkout
   dk comment <id> -m <text>        anyone may comment, no claim needed
   dk inbox <id>                    what is new since your last look
 

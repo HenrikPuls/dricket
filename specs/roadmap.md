@@ -7,7 +7,7 @@ the items below; milestone numbers are not used.
 
 ## Now
 
-Nothing committed. Pick the next item only when its trigger fires (below).
+(nothing — see ## Later)
 
 ## Later
 - R-21 `add` from a complete document (stage, extension fields, body in one commit) — owner request, follow-up of `put`; the name `add -F` is taken by the description file, so it needs another flag.

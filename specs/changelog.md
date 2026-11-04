@@ -6,17 +6,6 @@ top-level CHANGELOG.md and are written at release time from this file.
 
 ## Awaiting verification
 
-- Drey requirement R-24 (owner request; dricket id R-24): one-step change
-  under a short claim — `--claim` on `set`, `put` and `move` takes and
-  releases the claim inside the one commit (epoch unchanged, no lease
-  written, exit 11 unchanged on a foreign claim, every kind may write),
-  JSON gains `short_claim`, ADR-0012 — handed over 2026-11-04 on branch
-  claude/drey-requirements-r01-r04-1f2c67
-
-- Drey requirements R-01 to R-04 (owner request; dricket ids R-17 to R-20):
-  `x-` extension fields, `[stages]`, `dk put`, `dk move`, ADR-0011 —
-  handed over 2026-11-04 on branch claude/drey-requirements-r01-r04-1f2c67
-
 - Skeleton: R-0 — handed over 2026-11-02
 - Infrastructure and Phase 0: public repository published (CI green, rulesets active, Pages live), roadmap and architecture refined — handed over 2026-11-02
 - Spike: R-1 — handed over 2026-11-02
@@ -64,6 +53,30 @@ top-level CHANGELOG.md and are written at release time from this file.
   is `--parent` — handed over 2026-11-03
 
 ## Shipped
+
+### R-25 Strict claim surface (2026-11-04)
+Owner decision after R-24: the promise "no write without a claim" holds
+without an exception for anyone. `set` and `move` removed; `put` is the
+only writer without a checkout and on an unclaimed ticket requires
+`--claim` (exit 17 otherwise); an admin's `--force` stays the only
+emergency path; `put` loses `--kind` and validates the priority value.
+`commit --release [--stage S] [-m note]` writes the edited ticket and
+frees the claim in one commit, with the exact-base, owner and epoch checks
+of `commit` and the release transition policy of the claim's kind; JSON
+gains `stage`. ADR-0013; ADR-0011 and ADR-0012 marked as partially
+superseded. Tests: service, validate and CLI suites reworked from set/move
+to put; commit-release service and CLI tests (one commit, freed claim,
+epoch unchanged, exit 14 for agent-to-done and unknown stage).
+
+### R-24 One-step change under a short claim (2026-11-04)
+`--claim` on `set`, `put` and `move` takes and releases the claim inside
+the one commit: the epoch stays (the transition invariant forbids a bump
+while the owner stays), no lease times are ever written, exit 11 unchanged
+on a foreign claim, the caller's own claim is exit 14, `--claim` excludes
+`--force`, every kind may write. JSON gains `short_claim`; `put` marks the
+commit message with "(short claim)". ADR-0012. Tests: service, validate
+replay of short-claim history, CLI. Superseded in part by R-25 the same
+day: the short claim lives on `put` only.
 
 ### R-20 `dk move` (2026-11-04)
 `move <id> --stage <s> [-m note] [--if-version N] [--force] [--kind human]`:

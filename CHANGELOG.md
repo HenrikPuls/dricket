@@ -6,6 +6,37 @@ and the project follows [Semantic Versioning](https://semver.org/). Versions
 below 1.0.0 may change the on-disk format and the CLI; such changes are always
 listed here.
 
+## [0.6.0] - 2026-11-04
+
+### Added
+- `x-<name>` extension header fields carry a frontend's own metadata:
+  preserved in order on every write, validated for shape and size,
+  secret-scanned; `add --set x-key=value` creates tickets with them
+  (ADR-0011).
+- Configurable stage vocabulary: a `[stages]` table in `dricket.toml`
+  replaces the built-in stages (`values`, `initial`, `terminal`, `claim`,
+  optional `cancelled`); claims, releases, `next`, lint and the transition
+  table follow it (ADR-0011).
+- `dk put <id> (-F <file> | -)`: whole-ticket write without a checkout,
+  guarded by `--if-version`, with the checks of `commit` (ADR-0011).
+- `dk put --claim`: takes and releases the claim inside the one commit (a
+  "short claim") — epoch unchanged, no lease times written, every kind may
+  write, a foreign claim stays exit 11 (ADR-0012).
+- `dk commit --release [--stage S] [-m note]`: writes the edited ticket
+  and frees the claim in one commit, with the checks of `commit` and the
+  release transition policy; the JSON result gains `stage` (ADR-0013).
+
+### Changed
+- The promise "no write without a claim" now holds without exception:
+  `dk put` on an unclaimed ticket requires `--claim` (exit 17 otherwise);
+  the human/admin permission exception and `put --kind` are gone. An
+  admin's `--force` remains the only emergency path (ADR-0013).
+- `dk put` validates the priority value like every other write.
+
+### Removed
+- `dk set` and `dk move`: field and stage changes are small whole-ticket
+  `dk put --claim` documents (ADR-0013).
+
 ## [0.5.0] - 2026-11-04
 
 ### Added

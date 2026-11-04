@@ -154,67 +154,61 @@ The normal workflow is `claim`, `sync`, an ordinary editor, and `commit`:
   guarded adoption, because the edited file is intentionally dirty. A change to
   the same ticket is exit 12. Comments and unrelated tickets can advance
   without causing that conflict.
+- `commit <id> --release [--stage S] [-m note]` writes the edited ticket and
+  frees the claim in the same commit (ADR-0013): the exact-base, owner and
+  epoch checks are the ones of `commit`, and the release transition policy of
+  the claim's kind applies to the target stage (default `review` with the
+  built-in stages; `--stage` is required with a configured `[stages]`
+  vocabulary, exit 14 for an unknown or unreachable one). The `epoch` stays,
+  no lease times are written, one log line `commit-release <id> -> <stage>`
+  records the freeing and `-m` becomes the result note.
 
 ## Writes without a checkout
 
-`set`, `put` and `move` write a ticket without `claim`, `sync` and an exact
-edit base (ADR-0011). Each is one commit with `rev` + 1, retried from a fresh
+`put` writes a ticket without `claim`, `sync` and an exact edit base
+(ADR-0011, ADR-0013). It is one commit with `rev` + 1, retried from a fresh
 base like every write.
 
-- `set <id> key=value...` changes free fields and `x-` fields. Several pairs
-  are one commit. An empty `x-` value removes the key. A ticket claimed by
-  someone else is refused (exit 11).
 - `put <id> (-F <file> | -)` replaces the whole ticket. Identity and claim
   fields (`owner`, `kind`, `size`, `claimed_at`, `lease_until`, `epoch`,
   `extensions`) must equal the current ticket, `rev` in the document is
   ignored, CRLF is normalised to LF, the secret scan and the size limit
   (body 100 000 bytes) apply and the whole transition is linted. A document
   equal to the current ticket is a no-op without a commit.
-- `move <id> --stage <s> [-m note]` changes the stage and appends one log line.
-  Moving to the current stage is a no-op.
 
-Who may call `put` and `move`: the claim holder; on an unclaimed ticket a
-caller that declares `--kind human` or is listed in `security.admins` (an
-agent gets exit 17); on a ticket claimed by someone else nobody (exit 11),
-except an admin with `--force` (exit 17 without admin). A forced `put` keeps
-the claim fields (the claimant's next exact-base `commit` fails with exit 12);
-a forced `move` clears the claim, like `force-release`, and keeps the epoch.
-`--if-version N` compares `rev` (exit 12 on mismatch); it is required unless
-the caller holds the claim. `0` is a valid version.
+Who may call `put`: the claim holder; on an unclaimed ticket only with
+`--claim` (exit 17 without it — no exception for humans or admins); on a
+ticket claimed by someone else nobody (exit 11), except an admin with
+`--force` (exit 17 without admin). A forced `put` keeps the claim fields
+(the claimant's next exact-base `commit` fails with exit 12).
+`--if-version N` compares `rev` (exit 12 on mismatch); it is required
+unless the caller holds the claim. `0` is a valid version.
 
-### One-step change under a short claim (`--claim`, ADR-0012)
+### One-step change under a short claim (`put --claim`, ADR-0012, ADR-0013)
 
-`set`, `put` and `move` accept `--claim`: claim, change and release share
-the one commit, so the promise "no write without a claim" holds for these
-writes without the human/admin exception above. The ticket must be
-unclaimed — a foreign claim is exit 11 as ever, the caller's own claim is
-exit 14 (a real claim needs no short one), and `--claim` excludes
-`--force`. Under a short claim every kind may write, agent or human.
-Because claim and release never land in a committed state, the owner is
-unchanged in every committed state: the `epoch` stays (the transition
-invariant requires that while the owner stays) and no `claimed_at` or
-`lease_until` is ever written — the single CAS commit is the mutual
-exclusion. `set` and `move` mark their log line with "(short claim)" (its
-timestamp is claim and release time at once); `put` keeps the document
-byte-exact and marks the commit message instead. `move --claim` applies
-the transition policy of the caller's `--kind`, like the kind of a real
-claim. The version guard is unchanged: `put --claim` still requires
-`--if-version`.
+`put --claim` takes the claim and frees it inside the one commit, so the
+promise "no write without a claim" holds without an exception for anyone.
+The ticket must be unclaimed — a foreign claim is exit 11 as ever, the
+caller's own claim is exit 14 (a real claim needs no short one), and
+`--claim` excludes `--force`. Under a short claim every kind may write,
+agent or human. Because claim and release never land in a committed state,
+the owner is unchanged in every committed state: the `epoch` stays (the
+transition invariant requires that while the owner stays) and no
+`claimed_at` or `lease_until` is ever written — the single CAS commit is
+the mutual exclusion. `put` keeps the document byte-exact and marks the
+commit message with "(short claim)". The version guard is unchanged:
+`put --claim` still requires `--if-version`.
 
 ### Command results (`--json`, inside the `data` envelope)
 
 | Command | `data` |
 |---|---|
-| `set` with one pair | `{"id","key","value","rev","fields":{key:value}}` |
-| `set` with several pairs | `{"id","rev","fields":{key:value,...}}` |
 | `put` | `{"id","rev","commit","changed_fields":["x-persona","body"]}`; `commit` is the head after the write, `changed_fields` lists header keys (`rev` excluded) in canonical order, then `"body"`; `[]` for a no-op |
-| `move` | `{"id","stage","from","rev"}` |
+| `commit` | `{"id","rev","commit","synced"}` |
+| `commit --release` | `{"id","rev","commit","synced","stage":"review"}` |
 
-With `--claim` the result of each of the three commands adds
-`"short_claim": true` (omitted otherwise): `set` keeps its one- or
-multi-pair shape, `put` becomes
-`{"id","rev","commit","changed_fields":[...],"short_claim":true}`, `move`
-becomes `{"id","stage","from","rev","short_claim":true}`.
+With `--claim` the `put` result adds `"short_claim": true` (omitted
+otherwise): `{"id","rev","commit","changed_fields":[...],"short_claim":true}`.
 
 ## Id allocation
 

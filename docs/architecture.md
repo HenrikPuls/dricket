@@ -53,7 +53,7 @@ local or remote store holds ticket files and the protected configuration.
   remote/bare stores, atomic ref updates for local non-bare stores (ADR-0010).
 - Two branches with different rights: protected `main` (config), writable `tickets`.
 - Trusted collaborators edit whole tickets; identity and coordination invariants are validated.
-- Frontends without a checkout write through `put` (whole ticket), `move` (stage) and `set` (free and `x-` fields): one commit each, guarded by `--if-version` (ADR-0011). With `--claim` each of them takes and releases the claim inside the same commit, so the write needs no permission exception (ADR-0012). The stage vocabulary is configurable (`[stages]`).
+- Frontends without a checkout write through `put` (whole ticket): one commit, guarded by `--if-version` (ADR-0011). On an unclaimed ticket `put --claim` takes and releases the claim inside the same commit, so every write happens under a claim and needs no permission exception (ADR-0012, ADR-0013). In a checkout, `commit --release` writes and frees the claim in one commit. The stage vocabulary is configurable (`[stages]`).
 - Leases by size and an `epoch` as cooperative fencing token, instead of heartbeats.
 - Structural snapshot and transition rules are checked over each commit diff.
 - Go and a static binary (ADR-0002).
@@ -135,11 +135,13 @@ whole-ticket commits publish by expected-old ref CAS before the same guarded
 adoption; ordinary local writes fast-forward a checked-out branch without
 overwriting pre-existing dirty paths (ADR-0010).
 
-`put` and `move` use the same write loop without the exact-base compare: the
+`put` uses the same write loop without the exact-base compare: the
 precondition re-reads the fresh ticket on every attempt, checks who may write
-(claim holder, a human or admin on an unclaimed ticket, an admin with
+(claim holder, anyone with `--claim` on an unclaimed ticket, an admin with
 `--force` on a foreign claim) and `--if-version`, then commits `rev + 1`
-(ADR-0011).
+(ADR-0011, ADR-0013). `commit --release` adds the release to the commit
+above: after the exact-base and owner checks pass, it clears the claim fields
+and applies the release transition policy in the same commit.
 
 ## 7. Deployment view
 
@@ -198,6 +200,7 @@ Index only; details in `docs/adr/`.
 | [0010](adr/0010-local-and-remote-cas.md) | Local ref CAS and remote push CAS | accepted |
 | [0011](adr/0011-extension-fields-stages-put-move.md) | Extension fields, configurable stages, whole-ticket put and move | accepted |
 | [0012](adr/0012-one-step-change-under-a-short-claim.md) | One-step change under a short claim | accepted |
+| [0013](adr/0013-strict-write-surface.md) | Strict write surface — put --claim and commit --release | accepted |
 
 ## 10. Quality requirements
 

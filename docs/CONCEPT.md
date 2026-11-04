@@ -256,8 +256,10 @@ configuration does not gate repository writes.
 - Repository writers are trusted collaborators; the Git host owns actual
   authentication and branch authorization.
 - The claim holder edits the whole ticket through `sync`, an editor and
-  `commit`. `set` remains a targeted convenience operation with
-  `--if-version`, not a permission boundary.
+  `commit` — or `commit --release` to write and free the claim in one
+  commit. Without a checkout, `put --claim` writes the whole ticket in one
+  commit under a short claim: every write happens under a claim, with
+  `--if-version` as the concurrency guard, not a permission boundary.
 - Anyone may write comments, even without a claim, as separate files.
 - `note` appends a human-readable log entry without changing the stage.
 - Unique owner IDs: every claim-capable process has its own
@@ -306,11 +308,11 @@ precedence: flags over environment over project over user.
 | `claim <id>` | take a ticket (`--size S\|M\|L`) |
 | `sync` | refresh and fast-forward a clean ticket checkout |
 | `restore <path>` | discard local changes to one path without fetching |
-| `commit <id>` | validate and publish one edited, claimed ticket |
+| `commit <id>` | validate and publish one edited, claimed ticket (`--release` frees the claim in the same commit) |
 | `note <id> -m <text>` | add a progress note, keep the claim |
 | `release <id>` | publish and release (`--stage`, `-m/--message`) |
 | `extend <id> -m <reason>` | extend the lease, reason required |
-| `set <id> key=value` | targeted field mutation (`--if-version`) |
+| `put <id>` | whole-ticket write without a checkout (`--claim` on an unclaimed ticket, `--if-version`) |
 | `comment <id> -m <text>` | append a separate add-only comment |
 | `show <id>` | display a ticket |
 | `ls` | list and filter tickets |

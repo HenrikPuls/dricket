@@ -16,6 +16,12 @@ import (
 
 // ------------------------------------------------------------- add ----
 
+// FieldValue is one key=value pair of `dk add --set`.
+type FieldValue struct {
+	Key   string
+	Value string
+}
+
 // AddRequest is `dk add`; Title is required unless Unclaimed is used with a
 // title anyway (the title is always required by lint).
 type AddRequest struct {
@@ -475,46 +481,6 @@ func commentFileName(t time.Time, author string) string {
 		}
 	}
 	return t.UTC().Format("2006-01-02T15-04-05Z") + "-" + b.String() + ".md"
-}
-
-// ------------------------------------------------------------- set ----
-
-func setList(tk *ticket.Ticket, key string, list []string) {
-	switch key {
-	case "labels":
-		tk.Labels = list
-	case "depends":
-		tk.Depends = list
-	case "touches":
-		tk.Touches = list
-	case "repos":
-		tk.Repos = list
-	}
-}
-
-func fieldValue(tk ticket.Ticket, key string) string {
-	switch key {
-	case "title":
-		return tk.Title
-	case "parent":
-		return tk.Parent
-	case "branch":
-		return tk.Branch
-	case "labels":
-		return strings.Join(tk.Labels, ", ")
-	case "depends":
-		return strings.Join(tk.Depends, ", ")
-	case "touches":
-		return strings.Join(tk.Touches, ", ")
-	case "repos":
-		return strings.Join(tk.Repos, ", ")
-	case "priority":
-		return tk.Priority
-	}
-	if v, ok := tk.Extension(key); ok {
-		return v
-	}
-	return ""
 }
 
 func roleOf(kind ticket.Kind) ticket.Role {

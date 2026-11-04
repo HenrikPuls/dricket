@@ -52,7 +52,7 @@ func editCommitTicket(t *testing.T, ws *store.Workspace, path, old, replacement 
 func TestCommitWholeTicketEdit(t *testing.T) {
 	svc, ws, bare, id, path := setupCommit(t)
 	editCommitTicket(t, ws, path, "title: old title", "title: new title")
-	result, err := svc.Commit(context.Background(), ws, id)
+	result, err := svc.Commit(context.Background(), ws, id, CommitOptions{})
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestCommitRejectsMalformedAndProtocolEdits(t *testing.T) {
 			svc, ws, bare, id, path := setupCommit(t)
 			editCommitTicket(t, ws, path, tc.old, tc.new)
 			before := bareShow(t, bare, path)
-			_, err := svc.Commit(context.Background(), ws, id)
+			_, err := svc.Commit(context.Background(), ws, id, CommitOptions{})
 			if ExitCode(err) != 14 {
 				t.Fatalf("err = %v, code %d; want 14", err, ExitCode(err))
 			}
@@ -105,7 +105,7 @@ func TestCommitRejectsStaleTicketAndPreservesEdit(t *testing.T) {
 	if _, err := svc.Note(context.Background(), id, "remote progress"); err != nil {
 		t.Fatal(err)
 	}
-	_, err := svc.Commit(context.Background(), ws, id)
+	_, err := svc.Commit(context.Background(), ws, id, CommitOptions{})
 	if ExitCode(err) != 12 {
 		t.Fatalf("err = %v, code %d; want 12", err, ExitCode(err))
 	}
@@ -126,7 +126,7 @@ func TestCommitAllowsUnrelatedRemoteWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	editCommitTicket(t, ws, path, "title: old title", "title: after retry")
-	result, err := svc.Commit(context.Background(), ws, id)
+	result, err := svc.Commit(context.Background(), ws, id, CommitOptions{})
 	if err != nil || !result.Synced {
 		t.Fatalf("Commit = %+v, %v", result, err)
 	}
@@ -138,7 +138,7 @@ func TestCommitAcceptedPushWithAdoptFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws.Dir(), "other-local.txt"), []byte("keep me\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	result, err := svc.Commit(context.Background(), ws, id)
+	result, err := svc.Commit(context.Background(), ws, id, CommitOptions{})
 	if err != nil {
 		t.Fatalf("accepted push returned error: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestCommitAcceptedPushPreservesUnpushedLocalCommit(t *testing.T) {
 	runGit(t, ws.Dir(), "-c", "user.name=alice", "-c", "user.email=alice@invalid", "commit", "--quiet", "-m", "unpushed")
 	localHead := strings.TrimSpace(runGit(t, ws.Dir(), "rev-parse", "HEAD"))
 	editCommitTicket(t, ws, path, "title: old title", "title: accepted remotely")
-	result, err := svc.Commit(context.Background(), ws, id)
+	result, err := svc.Commit(context.Background(), ws, id, CommitOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestCommitCommentDuringEdit(t *testing.T) {
 	if err != nil || len(inbox.NewComments) != 1 || inbox.NewComments[0].Excerpt != "please check the empty-password case" {
 		t.Fatalf("inbox = %+v, %v", inbox, err)
 	}
-	result, err := svc.Commit(ctx, ws, id)
+	result, err := svc.Commit(ctx, ws, id, CommitOptions{})
 	if err != nil || result.Rev != 2 {
 		t.Fatalf("Commit = %+v, %v", result, err)
 	}
@@ -225,7 +225,7 @@ func TestCommitRejectsReleasedTicket(t *testing.T) {
 		t.Fatal(err)
 	}
 	editCommitTicket(t, ws, path, "title: old title", "title: stale claim")
-	_, err := svc.Commit(context.Background(), ws, id)
+	_, err := svc.Commit(context.Background(), ws, id, CommitOptions{})
 	if ExitCode(err) != 13 && ExitCode(err) != 11 {
 		t.Fatalf("err = %v, code %d; want lost or claimed", err, ExitCode(err))
 	}

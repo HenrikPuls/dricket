@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -69,9 +70,11 @@ func TestCLIHappyPath(t *testing.T) {
 		t.Fatalf("comment = %d, %q, %q", code, out, errMsg)
 	}
 
-	code, out, errMsg = runForTest(t, "set", "app-1", "title=Fixed title")
-	if code != 0 || !strings.Contains(out, "title = Fixed title") {
-		t.Fatalf("set = %d, %q, %q", code, out, errMsg)
+	code, out, errMsg = putCLI(t, "app-1", -1, func(content string) string {
+		return strings.Replace(content, "title: Login error", "title: Fixed title", 1)
+	})
+	if code != 0 || dataOf(t, out)["rev"] != float64(2) {
+		t.Fatalf("put = %d, %q, %q", code, out, errMsg)
 	}
 
 	code, out, errMsg = runForTest(t, "release", "--message", "fix on dk/app-1", "app-1")
@@ -131,7 +134,7 @@ func TestCLIExitCodes(t *testing.T) {
 		code int
 	}{
 		{[]string{"show", "app-99"}, 10},
-		{[]string{"set", "app-1", "stage=done"}, 14},
+		{[]string{"set", "app-1", "x=1"}, 2}, // removed command (ADR-0013)
 		{[]string{"claim", "NOT-AN-ID"}, 14},
 		{[]string{"add", "-m", "no prefix"}, 2},
 		{[]string{"bogus"}, 2},
@@ -161,7 +164,7 @@ func TestCLIHelpListsCommands(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("help = %d", code)
 	}
-	for _, want := range []string{"add", "claim", "release", "comment", "set", "ls", "show", "lint", "version"} {
+	for _, want := range []string{"add", "claim", "release", "comment", "put", "ls", "show", "lint", "version"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help misses %q", want)
 		}
@@ -180,7 +183,25 @@ func dataOf(t *testing.T, out string) map[string]any {
 	return env.Data
 }
 
-func TestCLIExtensionFieldsPutAndMove(t *testing.T) {
+// putCLI writes ticket id back through `dk put --json`, applying edit to
+// the current content. ifVersion >= 0 adds --claim and --if-version (the
+// unclaimed path, ADR-0013); -1 writes as the claim holder.
+func putCLI(t *testing.T, id string, ifVersion int, edit func(string) string) (int, string, string) {
+	t.Helper()
+	_, shown, _ := runForTest(t, "--json", "show", id)
+	content, _ := dataOf(t, shown)["content"].(string)
+	f := filepath.Join(t.TempDir(), "ticket.md")
+	if err := os.WriteFile(f, []byte(edit(content)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"--json", "put", id, "-F", f}
+	if ifVersion >= 0 {
+		args = append(args, "--claim", "--if-version", strconv.Itoa(ifVersion))
+	}
+	return runForTest(t, args...)
+}
+
+func TestCLIExtensionFieldsAndPut(t *testing.T) {
 	setupBareCLI(t)
 
 	code, out, errMsg := runForTest(t, "--json", "add", "--prefix", "app", "-m", "Drey ticket", "--unclaimed",
@@ -189,31 +210,31 @@ func TestCLIExtensionFieldsPutAndMove(t *testing.T) {
 		t.Fatalf("add = %d, %q, %q", code, out, errMsg)
 	}
 
-	// Several pairs, one commit: the multi-pair shape is {id, rev, fields}.
-	code, out, errMsg = runForTest(t, "--json", "set", "app-1", "x-persona=paul", "x-rank=", "x-chain=a,b", "--if-version", "0")
+	// Extension fields change through put of the whole document: set,
+	// change and remove keys in one commit (ADR-0013).
+	code, out, errMsg = putCLI(t, "app-1", 0, func(content string) string {
+		content = strings.Replace(content, "x-persona: ben", "x-persona: paul", 1)
+		content = strings.Replace(content, "x-rank: 10\n", "", 1)
+		return strings.Replace(content, "labels: ", "x-chain: a,b\nlabels: ", 1)
+	})
 	if code != 0 {
-		t.Fatalf("set = %d, %q, %q", code, out, errMsg)
+		t.Fatalf("put = %d, %q, %q", code, out, errMsg)
 	}
 	data := dataOf(t, out)
-	fields, _ := data["fields"].(map[string]any)
-	if data["rev"] != float64(1) || data["key"] != nil || fields["x-persona"] != "paul" || fields["x-rank"] != "" || fields["x-chain"] != "a,b" {
-		t.Fatalf("set json = %v", data)
+	if data["rev"] != float64(1) || data["short_claim"] != true {
+		t.Fatalf("put json = %v", data)
 	}
 	code, out, _ = runForTest(t, "show", "app-1")
 	if code != 0 || !strings.Contains(out, "x-persona: paul") || !strings.Contains(out, "x-chain: a,b") || strings.Contains(out, "x-rank:") {
 		t.Fatalf("show = %d, %q", code, out)
 	}
 
-	// A bad extension key is a usage-level validation error (exit 14).
-	if code, _, _ = runForTest(t, "set", "app-1", "x-Bad=1"); code != 14 {
-		t.Errorf("bad key exit = %d, want 14", code)
-	}
-	if code, _, _ = runForTest(t, "set", "app-1", "novalue"); code != 2 {
-		t.Errorf("missing '=' exit = %d, want 2", code)
+	// put needs -F <file> or '-'.
+	if code, _, _ = runForTest(t, "put", "app-1"); code != 2 {
+		t.Errorf("put without input = %d, want 2", code)
 	}
 
-	// put from a file: needs the human kind and a version on an unclaimed
-	// ticket, and answers {id, rev, commit, changed_fields}.
+	// An unclaimed ticket writes only under --claim, with --if-version.
 	file := filepath.Join(t.TempDir(), "ticket.md")
 	_, shown, _ := runForTest(t, "--json", "show", "app-1")
 	content, _ := dataOf(t, shown)["content"].(string)
@@ -221,15 +242,15 @@ func TestCLIExtensionFieldsPutAndMove(t *testing.T) {
 		t.Fatal(err)
 	}
 	if code, _, _ = runForTest(t, "put", "app-1", "-F", file, "--if-version", "1"); code != 17 {
-		t.Errorf("put as agent on an unclaimed ticket = %d, want 17", code)
+		t.Errorf("claim-free put on an unclaimed ticket = %d, want 17", code)
 	}
-	if code, _, _ = runForTest(t, "put", "app-1", "-F", file, "--kind", "human"); code != 14 {
-		t.Errorf("put without --if-version = %d, want 14", code)
+	if code, _, _ = runForTest(t, "put", "app-1", "-F", file, "--claim"); code != 14 {
+		t.Errorf("put --claim without --if-version = %d, want 14", code)
 	}
-	if code, _, _ = runForTest(t, "put", "app-1", "-F", file, "--kind", "human", "--if-version", "5"); code != 12 {
+	if code, _, _ = runForTest(t, "put", "app-1", "-F", file, "--claim", "--if-version", "5"); code != 12 {
 		t.Errorf("put with a stale version = %d, want 12", code)
 	}
-	code, out, errMsg = runForTest(t, "--json", "put", "app-1", "-F", file, "--kind", "human", "--if-version", "1")
+	code, out, errMsg = runForTest(t, "--json", "put", "app-1", "-F", file, "--claim", "--if-version", "1")
 	if code != 0 {
 		t.Fatalf("put = %d, %q, %q", code, out, errMsg)
 	}
@@ -241,23 +262,20 @@ func TestCLIExtensionFieldsPutAndMove(t *testing.T) {
 		t.Fatalf("changed_fields = %v", data["changed_fields"])
 	}
 
-	// move: {id, stage, from, rev}; same stage is a no-op at the same rev.
-	code, out, errMsg = runForTest(t, "--json", "move", "app-1", "--stage", "review", "--kind", "human", "-m", "looks good")
+	// A stage change is a put of the edited header line.
+	code, out, errMsg = putCLI(t, "app-1", 2, func(content string) string {
+		return strings.Replace(content, "stage: open", "stage: review", 1)
+	})
 	if code != 0 {
-		t.Fatalf("move = %d, %q, %q", code, out, errMsg)
+		t.Fatalf("stage put = %d, %q, %q", code, out, errMsg)
 	}
 	data = dataOf(t, out)
-	if data["stage"] != "review" || data["from"] != "open" || data["rev"] != float64(3) {
-		t.Fatalf("move json = %v", data)
+	if got, _ := data["changed_fields"].([]any); data["rev"] != float64(3) || len(got) != 1 || got[0] != "stage" {
+		t.Fatalf("stage put json = %v", data)
 	}
-	code, out, _ = runForTest(t, "--json", "move", "app-1", "--stage", "review", "--kind", "human")
-	if code != 0 || dataOf(t, out)["rev"] != float64(3) {
-		t.Fatalf("repeated move = %d, %q", code, out)
-	}
-	if code, _, _ = runForTest(t, "move", "app-1", "--stage", "nowhere", "--kind", "human"); code != 14 {
+	if code, _, _ = putCLI(t, "app-1", 3, func(content string) string {
+		return strings.Replace(content, "stage: review", "stage: nowhere", 1)
+	}); code != 14 {
 		t.Errorf("unknown stage = %d, want 14", code)
-	}
-	if code, _, _ = runForTest(t, "move", "app-1"); code != 2 {
-		t.Errorf("move without --stage = %d, want 2", code)
 	}
 }

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/HenrikPuls/dricket/internal/service"
-	"github.com/HenrikPuls/dricket/internal/ticket"
 )
 
 // repeatable is a string flag that may be given several times.
@@ -53,8 +52,7 @@ func newPutFlagSet() *flag.FlagSet {
 	fs.String("F", "", "read the complete ticket.md from a file (or pass '-' for stdin)")
 	fs.Int("if-version", 0, "expected rev of the ticket (required unless you hold the claim)")
 	fs.Bool("force", false, "admin: overwrite a ticket that someone else has claimed")
-	fs.Bool("claim", false, "take and release a short claim inside the one commit (unclaimed tickets)")
-	fs.String("kind", "agent", "actor kind agent or human")
+	fs.Bool("claim", false, "take and release a short claim inside the one commit (required on unclaimed tickets)")
 	return fs
 }
 
@@ -85,7 +83,6 @@ func runPut(e *env, args []string) (any, *cliError) {
 	res, err := s.Put(context.Background(), fs.Arg(0), content, service.PutOptions{
 		IfVersion: versionFlag(fs),
 		Force:     boolFlag(fs, "force"),
-		Kind:      ticket.Kind(stringFlag(fs, "kind")),
 		Claim:     boolFlag(fs, "claim"),
 	})
 	if err != nil {
@@ -101,45 +98,4 @@ func runPut(e *env, args []string) (any, *cliError) {
 	return res, nil
 }
 
-// ----------------------------------------------------------------- move --
 
-func newMoveFlagSet() *flag.FlagSet {
-	fs := newFlagSet("move")
-	fs.String("stage", "", "target stage (required)")
-	var message string
-	fs.StringVar(&message, "m", "", "note for the log")
-	fs.StringVar(&message, "message", "", "note for the log")
-	fs.Int("if-version", 0, "expected rev of the ticket")
-	fs.Bool("force", false, "admin: move a ticket that someone else has claimed and clear the claim")
-	fs.Bool("claim", false, "take and release a short claim inside the one commit (unclaimed tickets)")
-	fs.String("kind", "agent", "actor kind agent or human")
-	return fs
-}
-
-func runMove(e *env, args []string) (any, *cliError) {
-	fs := newMoveFlagSet()
-	if cerr := parseFlags(fs, args); cerr != nil {
-		return nil, cerr
-	}
-	if fs.NArg() != 1 || stringFlag(fs, "stage") == "" {
-		return nil, usageError("move: a ticket id and --stage are required")
-	}
-	s, cerr := e.svc()
-	if cerr != nil {
-		return nil, cerr
-	}
-	res, err := s.Move(context.Background(), fs.Arg(0), ticket.Stage(stringFlag(fs, "stage")), service.MoveOptions{
-		Note:      textFlag(fs),
-		IfVersion: versionFlag(fs),
-		Force:     boolFlag(fs, "force"),
-		Kind:      ticket.Kind(stringFlag(fs, "kind")),
-		Claim:     boolFlag(fs, "claim"),
-	})
-	if err != nil {
-		return nil, wrapErr(err)
-	}
-	if !e.json {
-		e.outf("moved %s %s -> %s (rev %d)\n", res.ID, res.From, res.Stage, res.Rev)
-	}
-	return res, nil
-}

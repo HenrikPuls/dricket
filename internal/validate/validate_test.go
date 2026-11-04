@@ -230,18 +230,26 @@ func TestValidateDetectsManipulations(t *testing.T) {
 	}
 }
 
+// putDepends writes the depends header of a freshly added (rev 0),
+// unclaimed ticket through a put under a short claim (ADR-0013).
+func putDepends(t *testing.T, s *service.Service, bare, id, dep string) {
+	t.Helper()
+	content := runGit(t, bare, "show", "tickets:tickets/app/0000/"+id+"/ticket.md")
+	rev := 0
+	edited := strings.Replace(content, "depends: ", "depends: "+dep, 1)
+	if _, err := s.Put(context.Background(), id, edited, service.PutOptions{Claim: true, IfVersion: &rev}); err != nil {
+		t.Fatalf("put depends %s: %v", id, err)
+	}
+}
+
 func TestValidateDetectsCycle(t *testing.T) {
 	bare := setupBare(t)
 	ctx := context.Background()
 	alice := openSvc(t, bare, "alice")
 	id1, _ := alice.Add(ctx, service.AddRequest{Prefix: "app", Title: "one", Unclaimed: true})
 	id2, _ := alice.Add(ctx, service.AddRequest{Prefix: "app", Title: "two", Unclaimed: true})
-	if _, err := alice.Set(ctx, id1, "depends", id2, 0); err != nil {
-		t.Fatalf("set 1: %v", err)
-	}
-	if _, err := alice.Set(ctx, id2, "depends", id1, 0); err != nil {
-		t.Fatalf("set 2: %v", err)
-	}
+	putDepends(t, alice, bare, id1, id2)
+	putDepends(t, alice, bare, id2, id1)
 
 	svc := openSvc(t, bare, "auditor")
 	findings, err := Store(context.Background(), svc.Store)

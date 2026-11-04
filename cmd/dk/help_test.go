@@ -32,7 +32,7 @@ func TestHelpForEveryCommandWithoutStore(t *testing.T) {
 	flags := map[string]string{
 		"add": "--message", "claim": "--size", "release": "--message",
 		"comment": "--message", "extend": "--message", "note": "--message",
-		"set": "--if-version", "ls": "-s <value>", "next": "--claim",
+		"put": "--if-version", "ls": "-s <value>", "next": "--claim",
 		"leases": "--check", "init": "--branch", "force-release": "--message",
 		"validate": "--trailers",
 	}

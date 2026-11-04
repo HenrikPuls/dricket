@@ -61,15 +61,18 @@ validate ok
 
 `dk restore <path>` discards a local edit without fetching. `dk sync` refuses
 a dirty checkout, and `dk commit` preserves local work when the same ticket
-changed remotely. Everything remains ordinary Git history and Markdown.
+changed remotely. `dk commit app-1 --release -m "fix on dk/app-1"` writes and
+frees the claim in one commit. Everything remains ordinary Git history and
+Markdown.
 
-Frontends that have no checkout write through three commands, each one
-commit guarded by `--if-version` (see [docs/protocol.md](docs/protocol.md)):
+Frontends that have no checkout write through `dk put`: one commit guarded by
+`--if-version`, with the claim taken and released inside the same commit
+(`--claim`), so every write happens under a claim (see
+[docs/protocol.md](docs/protocol.md)):
 
 ```console
-$ dk set app-1 x-persona=ben x-rank=5000 --if-version 2 --json
-$ dk put app-1 -F ticket.md --kind human --if-version 3 --json
-$ dk move app-1 --stage review --kind human -m "accepted" --json
+$ dk show app-1 > ticket.md          # edit ticket.md in an editor
+$ dk put app-1 -F ticket.md --claim --if-version 2 --json
 ```
 
 `x-<name>` header fields carry a frontend's own metadata. A `[stages]` table

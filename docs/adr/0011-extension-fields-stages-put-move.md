@@ -1,6 +1,7 @@
 # ADR-0011: Extension fields, configurable stages, whole-ticket put and move
 
-- Status: accepted
+- Status: accepted (the `put`/`move` permission model and `move` itself are
+  superseded by ADR-0013)
 - Date: 2026-11-04
 
 ## Context

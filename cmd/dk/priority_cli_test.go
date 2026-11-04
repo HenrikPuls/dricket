@@ -32,10 +32,12 @@ func TestCLIPriority(t *testing.T) {
 		t.Fatalf("ls = %d, %q", code, out)
 	}
 
-	// set changes the priority.
-	code, _, _ = runForTest(t, "set", "app-1", "priority=low")
+	// put changes the priority.
+	code, _, errMsg = putCLI(t, "app-1", 0, func(content string) string {
+		return strings.Replace(content, "priority: normal", "priority: low", 1)
+	})
 	if code != 0 {
-		t.Fatalf("set priority = %d", code)
+		t.Fatalf("put priority = %d, %q", code, errMsg)
 	}
 	code, out, _ = runForTest(t, "show", "app-1")
 	if code != 0 || !strings.Contains(out, "priority: low") {

@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/HenrikPuls/dricket/internal/config"
 	"github.com/HenrikPuls/dricket/internal/frontmatter"
@@ -19,18 +18,17 @@ import (
 const MaxDocument = MaxBody + 32*1024
 
 // WriteMode says on what grounds a caller writes a ticket without having
-// checked it out: it owns the claim, it is a human or admin on an unclaimed
-// ticket (a "coordinator write"), or it is an admin overriding a claim.
+// checked it out: it owns the claim, or it is an admin overriding a claim.
 type WriteMode struct {
 	Claimant bool
 	Forced   bool
 }
 
 // writeRights decides whether the caller may write fresh outside the claim
-// protocol. kind is the caller's self-declared kind (like `claim --kind`);
-// roles are detected, not enforced against the repository. The rules are
-// shared by put and move.
-func (s *Service) writeRights(cfg *config.Config, fresh ticket.Ticket, kind ticket.Kind, force bool, id, verb string) (WriteMode, error) {
+// protocol (ADR-0013): the claim holder always; an unclaimed ticket only
+// under --claim, never claim-free; someone else's claim is exit 11, an
+// admin may override with --force.
+func (s *Service) writeRights(cfg *config.Config, fresh ticket.Ticket, force bool, id string) (WriteMode, error) {
 	admin := cfg.IsAdmin(s.Owner)
 	switch fresh.Owner {
 	case s.Owner:
@@ -42,11 +40,8 @@ func (s *Service) writeRights(cfg *config.Config, fresh ticket.Ticket, kind tick
 		if force {
 			return WriteMode{}, errf(KindInvalid, "--force applies to a claimed ticket; %s is not claimed", id)
 		}
-		if kind != ticket.KindHuman && !admin {
-			return WriteMode{}, errf(KindForbidden,
-				"%s on unclaimed %s needs --kind human or an admin from security.admins; owner %s is neither (exit 17)", verb, id, s.Owner)
-		}
-		return WriteMode{}, nil
+		return WriteMode{}, errf(KindForbidden,
+			"put on unclaimed %s needs --claim: no write without a claim (exit 17)", id)
 	default:
 		if !force {
 			return WriteMode{}, errf(KindClaimed, "ticket %s is claimed by %s (lease until %s); an admin may pass --force",
@@ -54,7 +49,7 @@ func (s *Service) writeRights(cfg *config.Config, fresh ticket.Ticket, kind tick
 		}
 		if !admin {
 			return WriteMode{}, errf(KindForbidden,
-				"%s --force: owner %s is not in security.admins of dricket.toml (exit 17)", verb, s.Owner)
+				"put --force: owner %s is not in security.admins of dricket.toml (exit 17)", s.Owner)
 		}
 		return WriteMode{Forced: true}, nil
 	}
@@ -65,10 +60,10 @@ func (s *Service) writeRights(cfg *config.Config, fresh ticket.Ticket, kind tick
 //
 // The version is a pointer because rev 0 is a real version: a ticket that
 // was added unclaimed and never written again is at rev 0.
-func checkVersion(fresh ticket.Ticket, mode WriteMode, ifVersion *int, id, verb string) error {
+func checkVersion(fresh ticket.Ticket, mode WriteMode, ifVersion *int, id string) error {
 	if ifVersion == nil {
 		if !mode.Claimant {
-			return errf(KindInvalid, "%s needs --if-version unless you hold the claim (current rev of %s is %d)", verb, id, fresh.Rev)
+			return errf(KindInvalid, "put needs --if-version unless you hold the claim (current rev of %s is %d)", id, fresh.Rev)
 		}
 		return nil
 	}
@@ -84,10 +79,9 @@ func checkVersion(fresh ticket.Ticket, mode WriteMode, ifVersion *int, id, verb 
 type PutOptions struct {
 	IfVersion *int // nil: not given
 	Force     bool
-	Kind      ticket.Kind // caller kind; empty means agent
 	// Claim runs the write under a short claim (ADR-0012): the ticket
-	// must be unclaimed, every kind may write, and --if-version is still
-	// required because the caller holds no committed claim.
+	// must be unclaimed, and --if-version is still required because the
+	// caller holds no committed claim.
 	Claim bool
 }
 
@@ -137,10 +131,6 @@ func (s *Service) Put(ctx context.Context, id, content string, opts PutOptions) 
 	if cerr != nil {
 		return PutResult{}, cerr
 	}
-	kind := opts.Kind
-	if kind == "" {
-		kind = ticket.KindAgent
-	}
 
 	var out PutResult
 	var toWrite ticket.Ticket
@@ -153,15 +143,15 @@ func (s *Service) Put(ctx context.Context, id, content string, opts PutOptions) 
 			}
 			var mode WriteMode
 			if opts.Claim {
-				if err := s.checkShortClaim(fresh, opts.Force, id, "put"); err != nil {
+				if err := s.checkShortClaim(fresh, opts.Force, id); err != nil {
 					return err
 				}
 			} else {
-				if mode, err = s.writeRights(cfg, fresh, kind, opts.Force, id, "put"); err != nil {
+				if mode, err = s.writeRights(cfg, fresh, opts.Force, id); err != nil {
 					return err
 				}
 			}
-			if err := checkVersion(fresh, mode, opts.IfVersion, id, "put"); err != nil {
+			if err := checkVersion(fresh, mode, opts.IfVersion, id); err != nil {
 				return err
 			}
 			c := candidate
@@ -178,6 +168,13 @@ func (s *Service) Put(ctx context.Context, id, content string, opts PutOptions) 
 				return errStop{idempotent: true}
 			}
 			c.Rev = fresh.Rev + 1
+			// The priority values come from dricket.toml; without this the
+			// write path would accept values that validate later rejects.
+			if c.Priority != "" {
+				if err := cfg.CheckPriority(strings.ToLower(c.Priority)); err != nil {
+					return errf(KindInvalid, "%v", err)
+				}
+			}
 			if findings := ticket.ValidateTransitionWith(fresh, c, cfg.Stages, true); len(findings) != 0 {
 				messages := make([]string, 0, len(findings))
 				for _, finding := range findings {
@@ -199,7 +196,7 @@ func (s *Service) Put(ctx context.Context, id, content string, opts PutOptions) 
 	if opts.Claim {
 		// put never touches the document's log; the commit message
 		// carries the mark of the short claim (ADR-0012).
-		spec.Message += " (short claim)"
+		spec.Message += shortClaimMark
 	}
 	err = s.Store.Write(ctx, spec)
 	var stop errStop
@@ -243,134 +240,4 @@ func changedFields(a, b ticket.Ticket) []string {
 		out = append(out, "body")
 	}
 	return out
-}
-
-// --------------------------------------------------------------- move ----
-
-// MoveOptions are the flags of `dk move`.
-type MoveOptions struct {
-	Note      string
-	IfVersion *int // nil: not given
-	Force     bool
-	Kind      ticket.Kind
-	// Claim runs the move under a short claim (ADR-0012): the ticket must
-	// be unclaimed, and the caller's --kind governs the transition policy
-	// like the kind of a real claim would.
-	Claim bool
-}
-
-// MoveResult reports a stage change. From is the previous stage; when the
-// ticket already was in the target stage nothing is committed.
-type MoveResult struct {
-	ID         string `json:"id"`
-	Stage      string `json:"stage"`
-	From       string `json:"from"`
-	Rev        int    `json:"rev"`
-	ShortClaim bool   `json:"short_claim,omitempty"`
-}
-
-// Move changes the stage of a ticket in one commit: rev + 1, epoch
-// unchanged, one log line. A claim holder keeps the claim; a forced move by
-// an admin on someone else's live claim also clears the claim (like
-// force-release followed by the move) and leaves the epoch alone.
-func (s *Service) Move(ctx context.Context, id string, stage ticket.Stage, opts MoveOptions) (MoveResult, error) {
-	id = strings.ToLower(strings.TrimSpace(id))
-	path, err := PathFor(id)
-	if err != nil {
-		return MoveResult{}, err
-	}
-	stage = ticket.Stage(strings.ToLower(strings.TrimSpace(string(stage))))
-	if stage == "" {
-		return MoveResult{}, errf(KindInvalid, "move needs --stage")
-	}
-	note := sanitize(strings.TrimSpace(opts.Note), MaxBody)
-	if err := s.scanSecrets(ctx, note); err != nil {
-		return MoveResult{}, err
-	}
-	cfg, cerr := s.config(ctx)
-	if cerr != nil {
-		return MoveResult{}, cerr
-	}
-	if !cfg.Stages.Valid(stage) {
-		return MoveResult{}, errf(KindInvalid, "stage %q is not one of %s", string(stage), cfg.Stages.Names())
-	}
-	kind := opts.Kind
-	if kind == "" {
-		kind = ticket.KindAgent
-	}
-
-	var out MoveResult
-	var mode WriteMode
-	var prevOwner string
-	spec := store.WriteSpec{
-		Message: "dricket: move " + id,
-		Check: func(h store.Head) error {
-			fresh, _, err := loadTicket(h, path)
-			if err != nil {
-				return err
-			}
-			claimRole := roleOf(fresh.Kind)
-			if opts.Claim {
-				if err = s.checkShortClaim(fresh, opts.Force, id, "move"); err != nil {
-					return err
-				}
-				mode = WriteMode{Claimant: true}
-				claimRole = roleOf(kind)
-			} else if mode, err = s.writeRights(cfg, fresh, kind, opts.Force, id, "move"); err != nil {
-				return err
-			}
-			if opts.IfVersion != nil {
-				if err := checkVersion(fresh, mode, opts.IfVersion, id, "move"); err != nil {
-					return err
-				}
-			}
-			if mode.Claimant && !cfg.IsAdmin(s.Owner) &&
-				!ticket.CanTransitionIn(cfg.Stages, cfg.Transitions, claimRole, fresh.Stage, stage) && fresh.Stage != stage {
-				return errf(KindInvalid, "%s may not move %s from %s to %s",
-					claimRole, id, fresh.Stage, stage)
-			}
-			prevOwner = fresh.Owner
-			out = MoveResult{ID: id, Stage: string(stage), From: string(fresh.Stage), Rev: fresh.Rev}
-			if fresh.Stage == stage && !mode.Forced {
-				return errStop{idempotent: true}
-			}
-			out.Rev = fresh.Rev + 1
-			return nil
-		},
-		Mutate: func(w store.Worktree) error {
-			tk, err := readWorktreeTicket(w, path)
-			if err != nil {
-				return err
-			}
-			now := s.Now()
-			event := "move " + id + " " + string(tk.Stage) + " -> " + string(stage)
-			if opts.Claim {
-				event += shortClaimMark
-			}
-			if mode.Forced {
-				tk.Owner = ""
-				tk.ClaimedAt = time.Time{}
-				tk.LeaseUntil = time.Time{}
-				tk.Extensions = 0
-				event += " (override of the claim of " + prevOwner + ")"
-			}
-			tk.Stage = stage
-			tk.Rev++
-			if note != "" {
-				event += ": " + firstLine(note)
-			}
-			appendLog(&tk, s.Owner, event, now)
-			if err := s.checkLint(tk, id); err != nil {
-				return err
-			}
-			return w.WriteFile(path, tk.ToDoc().Render())
-		},
-	}
-	err = s.Store.Write(ctx, spec)
-	var stop errStop
-	if err != nil && !errors.As(err, &stop) {
-		return MoveResult{}, err
-	}
-	out.ShortClaim = opts.Claim
-	return out, nil
 }

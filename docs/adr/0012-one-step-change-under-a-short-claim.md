@@ -1,6 +1,7 @@
 # ADR-0012: One-step change under a short claim
 
-- Status: accepted
+- Status: accepted (narrowed by ADR-0013: the short claim lives on `put`
+  only, and `commit --release` was built after all)
 - Date: 2026-11-04
 
 ## Context

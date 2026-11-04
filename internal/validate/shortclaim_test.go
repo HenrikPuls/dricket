@@ -3,10 +3,10 @@ package validate
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/HenrikPuls/dricket/internal/service"
-	"github.com/HenrikPuls/dricket/internal/ticket"
 )
 
 // History written under short claims replays clean: the owner never
@@ -21,15 +21,15 @@ func TestShortClaimHistoryReplaysClean(t *testing.T) {
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
-	if _, err := bob.SetMany(ctx, id, []service.FieldValue{{Key: "x-persona", Value: "ben"}}, nil, true); err != nil {
-		t.Fatalf("set --claim: %v", err)
-	}
-	if _, err := bob.Move(ctx, id, ticket.StageReview, service.MoveOptions{Claim: true, Kind: ticket.KindHuman}); err != nil {
-		t.Fatalf("move --claim: %v", err)
+	content := runGit(t, bare, "show", "tickets:tickets/app/0000/app-1/ticket.md")
+	edited := strings.Replace(content, "(no description)", "under a short claim", 1)
+	edited = strings.Replace(edited, "stage: open", "stage: review", 1)
+	zero := 0
+	if _, err := bob.Put(ctx, id, edited, service.PutOptions{Claim: true, IfVersion: &zero}); err != nil {
+		t.Fatalf("put --claim: %v", err)
 	}
 
-	st := alice.Store
-	findings, err := Store(ctx, st)
+	findings, err := Store(ctx, alice.Store)
 	if err != nil {
 		t.Fatalf("validate: %v", err)
 	}

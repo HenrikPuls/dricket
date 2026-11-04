@@ -124,8 +124,11 @@ func TestSecretScanRefusesWrite(t *testing.T) {
 	if _, err := alice.Note(ctx, "app-1", "-----BEGIN OPENSSH PRIVATE KEY-----"); ExitCode(err) != 19 {
 		t.Fatalf("note with secret err = %v, code %d", err, ExitCode(err))
 	}
-	if _, err := alice.Set(ctx, "app-1", "branch", "glpat-ABCDEFGHIJKLMNOPQRST", 0); ExitCode(err) != 19 {
-		t.Fatalf("set with secret err = %v, code %d", err, ExitCode(err))
+	// A whole-ticket write is scanned too.
+	content := bareShow(t, bare, app1)
+	leak := strings.Replace(content, "branch: ", "branch: glpat-ABCDEFGHIJKLMNOPQRST", 1)
+	if _, err := alice.Put(ctx, "app-1", leak, PutOptions{}); ExitCode(err) != 19 {
+		t.Fatalf("put with secret err = %v, code %d", err, ExitCode(err))
 	}
 
 	// With the scan off the same write goes through.
