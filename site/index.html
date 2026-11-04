@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <style>:root{color-scheme:light;padding-block:env(safe-area-inset-top,0px) env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
-<title>dricket – Git-native ticketing</title>
+<title>dricket – coordination for humans and agents</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="dricket is a Git-native ticketing system for humans and AI agents. Claims by fast-forward CAS, no server.">
+<meta name="description" content="dricket is a coordination protocol for work shared between people and AI agents: claims, leases and fencing over plain Git, with no server to run.">
 <style>
 /* Layout concept: one long page set like a spec sheet. A ticket card with a live claim race
    carries the hero, everything below is ruled sections with mono labels. System fonts only,
@@ -82,6 +82,8 @@ h1 em { font-style: normal; color: var(--accent); }
 .ticket { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; min-width: 0; }
 .ticket-bar { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
 .ticket pre { margin: 0; padding: 14px; font-size: 13px; line-height: 1.7; overflow-x: auto; }
+.leasebar { height: 4px; background: var(--line); }
+.leasebar > i { display: block; height: 100%; width: 0; background: var(--accent); }
 .ticket .k { color: var(--muted); }
 .ticket .v-owner, .ticket .v-lease, .ticket .v-epoch { font-weight: 700; }
 .ticket .v-owner.on { color: var(--accent); }
@@ -147,6 +149,7 @@ footer { border-top: 1px solid var(--line); padding-top: 28px; color: var(--mute
   <header class="top">
     <a class="mark" href="#top" id="top">dri<span>cket</span></a>
     <nav class="nav" aria-label="Main">
+      <a href="#why">Why</a>
       <a href="#how">How it works</a>
       <a href="#guardrails">Guardrails</a>
       <a href="#security">Security</a>
@@ -159,8 +162,8 @@ footer { border-top: 1px solid var(--line); padding-top: 28px; color: var(--mute
   <main>
     <div class="hero">
       <div>
-        <h1>Tickets that live in Git. <em>Claimed by fast-forward.</em> Safe for humans and agents.</h1>
-        <p class="lede">dricket is a ticketing system with no server. Each ticket is a Markdown file. When two runners reach for the same ticket, Git decides who gets it, and the other one is told immediately.</p>
+        <h1>People and agents work from the same queue. <em>A protocol decides who takes what.</em></h1>
+        <p class="lede">dricket is that protocol. Claiming a ticket works like pushing to Git: the first push wins, and everyone else is told right away to pick something else. If a runner crashes, its claim runs out by itself. If it keeps working anyway, its next save is rejected. Your Git host already does all of this, so there is no server to run. Tickets are plain Markdown files you can open in any editor, and dk is the small tool that keeps everyone honest.</p>
         <div class="cta">
           <a class="btn primary" href="https://github.com/HenrikPuls/dricket">View on GitHub</a>
           <a class="btn" href="https://github.com/HenrikPuls/dricket/blob/main/docs/CONCEPT.md">Read the concept</a>
@@ -175,32 +178,47 @@ footer { border-top: 1px solid var(--line); padding-top: 28px; color: var(--mute
 <span class="k">stage:</span> <span id="v-stage">open</span>
 <span class="k">owner:</span> <span class="v-owner" id="v-owner">&ndash;</span>
 <span class="k">lease_until:</span> <span class="v-lease" id="v-lease">&ndash;</span>
-<span class="k">epoch:</span> <span class="v-epoch" id="v-epoch">0</span></pre>
+<span class="k">epoch:</span> <span class="v-epoch" id="v-epoch">0</span>
+<span class="k">rev:</span> <span id="v-rev">1</span></pre>
+          <div class="leasebar" id="leasebar" hidden><i id="leasefill"></i></div>
           <div class="ticket-actions">
             <button class="btn" id="a" type="button">Runner A claims</button>
-            <button class="btn" id="b" type="button">Runner B tries to claim</button>
+            <button class="btn" id="b" type="button">Runner B claims</button>
+            <button class="btn" id="s" type="button">Runner A saves work</button>
             <button class="btn" id="r" type="button">Reset</button>
           </div>
           <div class="log" id="log" aria-live="polite"><p class="note">Press a button. Nothing here talks to a server.</p></div>
         </div>
-        <p class="caption">Interactive illustration of the real claim protocol. No server is involved.</p>
+        <p class="caption">Try it: claims, a ticking lease (10 s stand in for 8 h), and what happens when it runs out. Claiming your own ticket extends the lease. No server takes part.</p>
       </div>
     </div>
+
+    <section id="why">
+      <p class="label">Why</p>
+      <h2>Tracking work was never the hard part.</h2>
+      <div class="cols">
+        <div><h3>Duplicate work</h3><p>Two runners pick the same task and both finish it. You find out when the second pull request arrives.</p></div>
+        <div><h3>Claims that never die</h3><p>A crashed agent holds its task forever. A lock file has no expiry date.</p></div>
+        <div><h3>Nothing says stop</h3><p>An agent that lost its task just keeps writing, unless something tells it to stop.</p></div>
+        <div><h3>A service to babysit</h3><p>The usual fix is a coordination server: one more thing to install, update and watch.</p></div>
+      </div>
+    </section>
 
     <section id="how">
       <p class="label">How it works</p>
       <h2>The fast-forward is the lock.</h2>
       <div class="flow">
-        <div><code>1 &middot; refresh</code><p>Runner A reads an immutable snapshot of the ticket branch.</p></div>
-        <div><code>2 &middot; commit</code><p>A writes its claim on top: owner, lease, a new epoch.</p></div>
-        <div><code>3 &middot; publish</code><p>Git accepts exactly one fast-forward, by remote push or local ref CAS.</p></div>
-        <div><code>4 &middot; retry</code><p>B's publication is rejected. B refreshes, sees A owns the ticket, and moves on.</p></div>
+        <div><code>1 &middot; refresh</code><p>Runner A reads the tickets as they are right now.</p></div>
+        <div><code>2 &middot; commit</code><p>A adds its claim on top: its name and how long it needs.</p></div>
+        <div><code>3 &middot; publish</code><p>Git lets exactly one update through. First push wins.</p></div>
+        <div><code>4 &middot; retry</code><p>B is too late. B reads again, sees the ticket belongs to A, and picks something else.</p></div>
       </div>
+      <p class="note" style="margin-top:24px">Git is just the carrier. The full rules for claims, retries and error codes are written down in <a href="https://github.com/HenrikPuls/dricket/blob/main/docs/protocol.md">docs/protocol.md</a>.</p>
       <div class="cols" style="margin-top:40px">
-        <div><h3>No server to run</h3><p>Your Git host is the database and the lock manager. Nothing else to deploy, patch or monitor.</p></div>
-        <div><h3>Markdown you can edit</h3><p>One folder per ticket, comments as separate files, history in <code>git log</code>. Open it in any editor.</p></div>
-        <div><h3>Stable paths and IDs</h3><p>IDs like <code>app-6842</code> are easy to say aloud. A ticket's path never changes when its stage does.</p></div>
-        <div><h3>One tool in between</h3><p>People and agents change state through a strict CLI, <code>dk</code>, so the files stay consistent.</p></div>
+        <div><h3>No server to run</h3><p>Your Git host stores the tickets and decides every claim. Nothing else to install, update or watch.</p></div>
+        <div><h3>Markdown you can edit</h3><p>One folder per ticket, comments in their own files, history in <code>git log</code>. Open it in any editor.</p></div>
+        <div><h3>Names you can say out loud</h3><p><code>app-6842</code> is easy to drop into a conversation. And a ticket's file never moves when its status changes.</p></div>
+        <div><h3>One tool for everyone</h3><p>People and agents make their changes through <code>dk</code>, so the files never end up broken.</p></div>
       </div>
     </section>
 
@@ -212,14 +230,14 @@ footer { border-top: 1px solid var(--line); padding-top: 28px; color: var(--mute
         <div class="size"><b>M</b><span>starts at 8 h</span></div>
         <div class="size"><b>L</b><span>starts at 24 h, the default</span></div>
       </div>
-      <p class="note" style="margin-top:-12px;margin-bottom:32px">Configurable starting values. The local concurrency spike checks correctness, not real-host performance.</p>
+      <p class="note" style="margin-top:-12px;margin-bottom:32px">Starting values you can change. Our stress test checks that the rules hold, not how fast a real host answers.</p>
       <div class="cols">
-        <div><h3>Leases by size</h3><p>A claim carries a size instead of a guessed duration. Extending needs a reason.</p></div>
-        <div><h3>Cooperative fencing</h3><p>Every claim or takeover raises an epoch. A compliant writer holding an old epoch is refused and told to stop.</p></div>
-        <div><h3>Trusted collaborators</h3><p>Repository writers collaborate. Agents normally stop at review; a human closes the ticket as a team convention.</p></div>
-        <div><h3>Structural validation</h3><p>Identity stays immutable. Revisions, epochs, ownership and lease fields must form a legal transition.</p></div>
-        <div><h3>Safe publication</h3><p>Whole-ticket commits require the exact edit base. Dirty work and unpushed local commits are preserved.</p></div>
-        <div><h3>Comments during a claim</h3><p>Separate add-only comments do not change the ticket version. Inbox reports them between work steps.</p></div>
+        <div><h3>Claims come in sizes</h3><p>You pick S, M or L instead of guessing hours. If you need more time, you say why.</p></div>
+        <div><h3>Lost claims stop themselves</h3><p>Every claim bumps a counter. A runner holding an old count gets its next save rejected, and knows it is time to stop.</p></div>
+        <div><h3>People keep the last word</h3><p>Everyone with write access is a teammate. Agents hand their work over at review; a person marks it done.</p></div>
+        <div><h3>Rules over trust</h3><p>A ticket's identity can never change, and every update has to follow the rules or it is rejected.</p></div>
+        <div><h3>Your work is never lost</h3><p>You can only publish on top of the version you started from. If someone beat you to it, your local changes stay put.</p></div>
+        <div><h3>Comments never collide</h3><p>Comments live in their own files, so they never clash with the owner's edits. <code>dk inbox</code> shows what came in.</p></div>
       </div>
     </section>
 
@@ -239,46 +257,46 @@ footer { border-top: 1px solid var(--line); padding-top: 28px; color: var(--mute
 <span class="p">$</span> dk release app-1 --stage review -m "Fix on dk/app-1"
 <span class="o">released app-1 -&gt; review</span></pre>
       </div>
-      <p class="caption">Verified development-branch workflow; timestamps and commit IDs shortened.</p>
+      <p class="caption">A real session from the development branch. Times and commit IDs shortened.</p>
     </section>
 
     <section id="security">
       <p class="label">Trust and integrity</p>
-      <h2>Collaborators write. The protocol keeps state coherent.</h2>
+      <h2>Everyone trusted can write. The rules keep things consistent.</h2>
       <div class="tablewrap">
         <table>
-          <thead><tr><th>dricket checks</th><th>Git host owns</th><th>Not promised</th></tr></thead>
+          <thead><tr><th>What dk checks</th><th>What your Git host handles</th><th>What nobody promises</th></tr></thead>
           <tbody><tr>
-            <td>Document shape, immutable identity, legal revision/epoch/claim transitions and safe local-work preservation.</td>
-            <td>Authentication, credentials and branch rights. Repository writers are trusted collaborators.</td>
-            <td>Proof of actor truthfulness, real timestamps or protection against external side effects by a stale agent.</td>
+            <td>Every file stays readable, a ticket's identity never changes, every update follows the rules, and your local work survives a conflict.</td>
+            <td>Logins, tokens and who is allowed to push. Anyone who can push is treated as a trusted teammate.</td>
+            <td>Proof that someone really is who they say, exact clocks, or stopping an agent from doing things outside Git.</td>
           </tr></tbody>
         </table>
       </div>
-      <p class="caption">Ticket text remains untrusted input. Comments are asynchronous review input, not an interrupt channel.</p>
+      <p class="caption">dk never blindly trusts what a ticket says, and a comment never interrupts a runner mid-work.</p>
     </section>
 
     <section id="status">
       <p class="label">Status</p>
-      <h2>Working software. Measured core protocol.</h2>
+      <h2>Working software, tested under pressure.</h2>
       <div class="tablewrap">
         <table>
           <thead><tr><th>Area</th><th>State</th></tr></thead>
           <tbody>
-            <tr><td>Tickets, claims, leases, comments, validation and discovery</td><td class="s done">released through v0.4.0</td></tr>
-            <tr><td>Concurrency spike: duplicate IDs, dual owners, lost updates and identity violations</td><td class="s done">zero in local runs</td></tr>
-            <tr><td>Whole-ticket sync/restore/commit, exact-base CAS and unknown-push recovery</td><td class="s done">released in v0.4.0</td></tr>
-            <tr><td>Local single-repository CAS, Git-like CLI and installed agent skill</td><td class="s next">implemented; awaiting next release</td></tr>
-            <tr><td>Real-host performance, multi-clock and long-history measurements</td><td class="s todo">open verification limits</td></tr>
+            <tr><td>Tickets, claims, leases, comments, checks and discovery</td><td class="s done">released through v0.5.0</td></tr>
+            <tr><td>Stress test with many runners at once: duplicate IDs, two owners, lost work</td><td class="s done">none in local runs</td></tr>
+            <tr><td>Syncing, restoring and saving whole tickets, and recovery when a push's outcome is unclear</td><td class="s done">released in v0.4.0</td></tr>
+            <tr><td>Working without any server on your own machine, a Git-like CLI and a ready-made agent skill</td><td class="s done">released in v0.5.0</td></tr>
+            <tr><td>Speed on real Git hosts, clock drift and very long histories</td><td class="s todo">not measured yet</td></tr>
           </tbody>
         </table>
       </div>
-      <p class="caption">No daemon, cache or event store is added without a measured need.</p>
+      <p class="caption">No background service, cache or database gets added unless a measurement says it is needed.</p>
     </section>
 
     <footer>
       <div>dricket is free software under the GNU General Public License v3.0 or later.</div>
-      <div>Designed for the ticket needs of drey, and built to work with any frontend or none.</div>
+      <div>A written set of rules, plus dk, the tool that enforces them. Works with any frontend, or none.</div>
       <div><a href="https://github.com/HenrikPuls/dricket">Source</a> &middot; <a href="https://github.com/HenrikPuls/dricket/blob/main/SECURITY.md">Security policy</a> &middot; <a href="https://github.com/HenrikPuls/dricket/blob/main/CONTRIBUTING.md">Contributing</a></div>
     </footer>
   </main>
@@ -286,7 +304,9 @@ footer { border-top: 1px solid var(--line); padding-top: 28px; color: var(--mute
 
 <script>
 (function () {
-  var s = { owner: null, epoch: 0 };
+  var LEASE_S = 10; // 10 s stand in for an 8 h size-M lease
+  var MAX_EXT = 3; // a lease can be extended three times, with a reason
+  var s = { owner: null, epoch: 0, rev: 1, left: 0, timer: null, lost: null, ext: 0 };
   var $ = function (id) { return document.getElementById(id); };
   var log = $('log');
   function line(cls, text) {
@@ -295,36 +315,75 @@ footer { border-top: 1px solid var(--line); padding-top: 28px; color: var(--mute
     p.textContent = text;
     log.appendChild(p);
   }
+  function stopTimer() {
+    if (s.timer) { clearInterval(s.timer); s.timer = null; }
+  }
   function render() {
     $('v-stage').textContent = s.owner ? 'in-progress' : 'open';
     var o = $('v-owner');
     o.textContent = s.owner || '–';
     o.className = 'v-owner' + (s.owner ? ' on' : '');
-    $('v-lease').textContent = s.owner ? 'in 8 h (size M)' : '–';
+    $('v-lease').textContent = s.owner ? s.left + ' s left (8 h, size M)' : '–';
     $('v-epoch').textContent = String(s.epoch);
-    $('a').disabled = !!s.owner;
+    $('v-rev').textContent = String(s.rev);
+    $('leasebar').hidden = !s.owner;
+    $('leasefill').style.width = s.owner ? (s.left / LEASE_S * 100) + '%' : '0';
   }
-  $('a').addEventListener('click', function () {
-    log.textContent = '';
-    s.owner = 'runner-a'; s.epoch += 1;
-    line('', 'runner-a: fetch, commit claim, push');
-    line('ok', 'accepted (fast-forward). Exit 0.');
+  function tick() {
+    s.left -= 1;
+    if (s.left > 0) { render(); return; }
+    stopTimer();
+    s.lost = s.owner;
+    s.owner = null;
+    line('no', 'lease expired: ' + s.lost + ' loses the ticket. It is open again.');
     render();
-  });
-  $('b').addEventListener('click', function () {
+  }
+  function claim(runner) {
     log.textContent = '';
-    line('', 'runner-b: fetch, commit claim, push');
+    if (s.owner === runner) {
+      if (s.ext >= MAX_EXT) {
+        line('no', runner + ': extend refused, the limit of ' + MAX_EXT + ' is reached. Exit 14.');
+        line('', 'finish the work or release the ticket.');
+        return;
+      }
+      s.ext += 1;
+      s.left = LEASE_S;
+      line('', runner + ': extend lease -m "still working on it" (' + s.ext + ' of ' + MAX_EXT + ')');
+      line('ok', 'lease extended. Exit 0.');
+      render();
+      return;
+    }
+    line('', runner + ': fetch, commit claim, push');
     if (s.owner) {
       line('no', 'rejected (not a fast-forward).');
-      line('', 'runner-b: fetch, ticket is owned by ' + s.owner + '. Exit 11.');
-    } else {
-      s.owner = 'runner-b'; s.epoch += 1;
-      line('ok', 'accepted (fast-forward). Exit 0.');
-      render();
+      line('', runner + ': fetch, owned by ' + s.owner + ', ' + s.left + ' s left on the lease. Exit 11.');
+      return;
     }
-  });
+    s.owner = runner; s.epoch += 1; s.left = LEASE_S; s.lost = null; s.ext = 0;
+    line('ok', 'accepted (fast-forward). Exit 0.');
+    stopTimer();
+    s.timer = setInterval(tick, 1000);
+    render();
+  }
+  function save(runner) {
+    log.textContent = '';
+    if (s.owner === runner) {
+      s.rev += 1;
+      line('ok', runner + ': committed (rev ' + s.rev + '). Exit 0.');
+    } else if (s.lost === runner) {
+      line('', runner + ': save after losing the lease');
+      line('no', 'rejected: claim lost, the epoch has moved on. Exit 13. ' + runner + ' stops.');
+    } else {
+      line('no', runner + ': no claim here, nothing to save. Claim first.');
+    }
+    render();
+  }
+  $('a').addEventListener('click', function () { claim('runner-a'); });
+  $('b').addEventListener('click', function () { claim('runner-b'); });
+  $('s').addEventListener('click', function () { save('runner-a'); });
   $('r').addEventListener('click', function () {
-    s.owner = null; s.epoch = 0;
+    stopTimer();
+    s = { owner: null, epoch: 0, rev: 1, left: 0, timer: null, lost: null, ext: 0 };
     log.textContent = '';
     line('note', 'Press a button. Nothing here talks to a server.');
     render();
