@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"strings"
 
 	"github.com/HenrikPuls/dricket/internal/service"
@@ -12,11 +13,16 @@ import (
 
 // ----------------------------------------------------------------- next --
 
-func runNext(e *env, args []string) (any, *cliError) {
+func newNextFlagSet() *flag.FlagSet {
 	fs := newFlagSet("next")
-	claim := fs.Bool("claim", false, "claim the chosen ticket directly")
-	size := fs.String("size", "M", "claim size S, M or L (with --claim)")
-	prefix := fs.String("p", "", "restrict to a project prefix")
+	fs.Bool("claim", false, "claim the chosen ticket directly")
+	fs.String("size", "M", "claim size S, M or L (with --claim)")
+	fs.String("p", "", "restrict to a project prefix")
+	return fs
+}
+
+func runNext(e *env, args []string) (any, *cliError) {
+	fs := newNextFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
@@ -28,9 +34,9 @@ func runNext(e *env, args []string) (any, *cliError) {
 		return nil, cerr
 	}
 	res, err := s.Next(context.Background(), service.NextOptions{
-		Claim:  *claim,
-		Size:   ticket.Size(strings.ToUpper(*size)),
-		Prefix: *prefix,
+		Claim:  boolFlag(fs, "claim"),
+		Size:   ticket.Size(strings.ToUpper(stringFlag(fs, "size"))),
+		Prefix: stringFlag(fs, "p"),
 	})
 	if err != nil {
 		return nil, wrapErr(err)
@@ -47,9 +53,14 @@ func runNext(e *env, args []string) (any, *cliError) {
 
 // --------------------------------------------------------------- search --
 
-func runSearch(e *env, args []string) (any, *cliError) {
+func newSearchFlagSet() *flag.FlagSet {
 	fs := newFlagSet("search")
-	prefix := fs.String("p", "", "restrict to a project prefix")
+	fs.String("p", "", "restrict to a project prefix")
+	return fs
+}
+
+func runSearch(e *env, args []string) (any, *cliError) {
+	fs := newSearchFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
@@ -61,7 +72,7 @@ func runSearch(e *env, args []string) (any, *cliError) {
 	if cerr != nil {
 		return nil, cerr
 	}
-	hits, err := s.Search(context.Background(), query, *prefix)
+	hits, err := s.Search(context.Background(), query, stringFlag(fs, "p"))
 	if err != nil {
 		return nil, wrapErr(err)
 	}

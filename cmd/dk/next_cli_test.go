@@ -9,8 +9,8 @@ import (
 func TestCLINextSearchValidate(t *testing.T) {
 	setupBareCLI(t)
 
-	runForTest(t, "add", "--prefix", "app", "-c", "Login error on empty password", "--unclaimed")
-	runForTest(t, "add", "--prefix", "app", "-c", "Rotate the login certificates", "--unclaimed")
+	runForTest(t, "add", "--prefix", "app", "-m", "Login error on empty password", "--unclaimed")
+	runForTest(t, "add", "--prefix", "app", "-m", "Rotate the login certificates", "--unclaimed")
 
 	code, out, errMsg := runForTest(t, "next")
 	if code != 0 || !strings.Contains(out, "app-1") || !strings.Contains(out, "open") {

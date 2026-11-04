@@ -22,8 +22,8 @@ The storage triple is `(remote, branch, path)`. The default branch is
 ## Consistency and trust
 
 The accepted commits on the ticket ref have one total order; the accepted
-push is the write's linearization point. Reads are snapshots at a fetched
-commit and can become stale immediately. There is no atomic transaction
+remote push or local fast-forward ref update is the write's linearization
+point. Reads are immutable snapshots and can become stale immediately. There is no atomic transaction
 across `main` and `tickets`, across repositories, or across external side
 effects. Leases additionally depend on local clocks.
 
@@ -90,25 +90,40 @@ deletes one. Adding a comment does not change the ticket's `rev`.
 
 ## Write protocol
 
-Every write is one push to the `tickets` branch. Never a rebase:
+Every write publishes one commit on the `tickets` branch. Never a rebase. The
+common loop is:
 
-1. `git fetch` the ticket branch.
-2. Reset the private working copy to the fetched head.
-3. Check the preconditions **on that fresh head** (ticket free, owner and
-   epoch as expected, path not taken, comment name free).
-4. Apply the mutation to the working copy; exactly the files the mutation
-   wrote are staged.
-5. Commit with the actor's git identity and record the commit SHA.
-6. Push `HEAD` to `refs/heads/<branch>`.
-7. If the push was rejected because someone else pushed first —
-   non-fast-forward, fetch-first, or the server-side `cannot lock ref`
-   race — back off and start over at step 1.
-8. Definite rights or protection failures end the write immediately.
-9. A transport failure can leave the outcome unknown. Fetch and check
-   whether the recorded commit is an ancestor of the remote head. Return
-   success if it is, definite failure if a complete fetch proves absence,
-   and otherwise error kind `outcome-unknown` with exit 15. Never blindly
-   replay a mutation after an unknown outcome.
+1. Refresh the ticket head. Remote and bare stores fetch it; a local non-bare
+   store resolves its local ref to a commit SHA.
+2. Reset only the private working copy to that immutable base. Local attempts
+   read private `HEAD`, never the moving public ref.
+3. Check the preconditions **on that snapshot** (ticket free, owner and epoch as
+   expected, path not taken, comment name free).
+4. Apply the mutation; exactly the files it wrote are staged.
+5. Commit with the actor's Git identity and record the candidate SHA.
+6. Publish by fast-forward as described below.
+7. On a concurrent-head rejection, back off and start over at step 1. Definite
+   rights, protection or local checkout failures do not retry.
+
+Remote and bare stores push `HEAD` to `refs/heads/<branch>`. A transport failure
+can leave the outcome unknown: fetch and check whether the recorded commit is
+an ancestor of the remote head. Return success if it is, definite failure if a
+complete fetch proves absence, and otherwise error kind `outcome-unknown` with
+exit 15. Never blindly replay a mutation after an unknown outcome.
+
+A non-bare filesystem store uses a private detached linked worktree of the same
+repository. If the ticket ref is not checked out, publication is an atomic
+`update-ref <ref> <candidate> <base>` compare-and-swap. If it is checked out,
+ordinary writes use `merge --ff-only <candidate>` in that checkout, updating
+ref, index and working tree together. A non-blocking OS file lock in the common
+Git directory serializes local publishers and is released on process exit, so
+another publisher's files cannot appear before its ref update. Pre-existing
+conflicting dirty paths
+return `conflict`/exit 12 immediately and remain untouched. Non-conflicting
+dirty paths, including a ticket edit during a comment write, survive. Dirty
+paths captured at refresh distinguish user conflicts from files created by a
+concurrent publisher; the latter are retryable races. Inconclusive local results
+are reconciled against candidate ancestry, never replayed blindly.
 
 Retry starting values (configuration, not constants): at most 8 attempts,
 backoff 200 ms doubling per attempt, capped at 5 s, jitter between 0.5 and
@@ -122,39 +137,40 @@ uncommitted edits is not disposable and is never reset or cleaned implicitly.
 
 The normal workflow is `claim`, `sync`, an ordinary editor, and `commit`:
 
-- `sync` runs inside an existing ticket checkout. It fetches the ticket
-  branch and fast-forwards a clean checkout; dirty or non-fast-forward
-  state is refused.
+- `sync` runs inside an existing ticket checkout. Remote checkouts fetch and
+  fast-forward; local stores already share the ref and need no fetch. Dirty or
+  non-fast-forward state is refused.
 - `restore <path>` discards local changes to one safe in-repo path, like
   `git restore`; it does not fetch.
 - `commit <id>` reads the ticket at local `HEAD` as the exact edit base and
-  the working-tree file as the edited candidate. On every CAS attempt the
-  fresh remote ticket must still equal that base, and the caller must own
-  the claim. The command preserves identity and claim fields, sets
-  `rev = fresh rev + 1`, validates the complete transition, commits and
-  pushes through the private store.
-- Only after the push succeeds does `commit` update the user checkout, and
-  only when the published file is still the checkout's only dirty path.
-  A remote change to the same ticket is exit 12. Comments and unrelated
-  tickets can advance without causing that conflict.
+  the working-tree file as the edited candidate. On every CAS attempt the fresh
+  store ticket must still equal that base, and the caller must own the claim.
+  The command preserves identity and claim fields, sets `rev = fresh rev + 1`,
+  validates the complete transition and commits through the private store.
+- Only after accepted publication does `commit` update the user checkout, and
+  only when the published file is still the checkout's only dirty path. Local
+  whole-ticket publication deliberately uses expected-old ref CAS before this
+  guarded adoption, because the edited file is intentionally dirty. A change to
+  the same ticket is exit 12. Comments and unrelated tickets can advance
+  without causing that conflict.
 
 ## Id allocation
 
 `add` computes N = highest existing number of the prefix + 1 on the fresh
 head, inside the precondition of the write above. If two adds race, one
-push wins; the other recomputes N on its next attempt and takes the next
-number. Collisions are impossible; gaps can happen.
+fast-forward publication wins; the other recomputes N on its next attempt and
+takes the next number. Collisions are impossible; gaps can happen.
 
 ## Configuration (dricket.toml)
 
 `dricket.toml` lives on the protected `main` branch and is maintained by
-admins through pull requests — never through `dk`. The tool fetches
-`main` into the private local ref `refs/dricket/config` (with
-`--no-write-fetch-head`, so the ticket protocol's `FETCH_HEAD` is never
-touched) and caches it for the process. Defaults apply when the remote
-has no `main` branch or no file; a broken file is a hard error for every
-operation that needs limits, and a `config-invalid` finding in
-`validate` (which keeps working with defaults).
+admins through pull requests — never through `dk`. Local non-bare stores read
+the local main ref directly. Remote and bare stores fetch `main` into the
+private local ref `refs/dricket/config` (with `--no-write-fetch-head`, so the
+ticket protocol's `FETCH_HEAD` is never touched). Config is cached for the
+process. Defaults apply when main or the file is absent; a broken file is a
+hard error for every operation that needs limits, and a `config-invalid`
+finding in `validate` (which keeps working with defaults).
 
 ```toml
 schema_version = 1        # this tool reads 1
@@ -202,13 +218,15 @@ behind this file and the TOML library.
 
 ## Resolving the store and project
 
-Inside the ticket repository no configuration is needed: the tool walks
-up from the working directory (like git) to the first *store root* — a
-git working tree whose checkout contains `dricket.toml` — and takes the
-remote (the `origin` URL, or the directory itself for the local stores
-`dk init` creates), the ticket branch (the `branch` key of
-`dricket.toml`, default `tickets`) and, when `prefixes.toml` registers
-exactly one prefix, the project.
+Inside the ticket repository no configuration is needed: the tool walks up to
+the actual Git working-tree root and reads committed `main:dricket.toml`. The
+current-checkout file is only a fallback when main has no config. This works on
+main, on the ticket branch and from nested ticket directories. Discovery takes
+the origin URL when present, or the directory itself otherwise; the ticket
+branch comes from `branch` (default `tickets`), and a single registered prefix
+resolves the project. An origin deliberately selects remote CAS; a discovered
+non-bare directory without one selects local CAS. Explicit bare paths always
+keep push CAS (ADR-0010).
 
 In a code repository, `dk use` writes the bindings into a `.dricket`
 file of that directory:
@@ -231,18 +249,19 @@ without any of them `add` fails with a hint (ADR-0008).
 ## Store setup and profiles
 
 - `dk init [dir-or-url]` sets up a store the way `git init` sets up a
-  repository: in a directory it creates a repository with the scaffold
-  committed on `main` (checked out, so dricket.toml is directly
-  editable) and an empty seed commit on the ticket branch; a remote URL
-  gets both branches pushed. Existing repositories and existing branches
-  are refused — the scaffold never overwrites anything. The tool then
-  works with `--store <dir>#<ticket-branch>`. The scaffold carries
-  dricket.toml with the defaults, prefixes.toml, README.md, AGENTS.md,
-  CLAUDE.md and a `.gitattributes` that normalizes line endings.
-- `dk setup-agent` writes one pointer line into the AGENTS.md of the
-  current code repository: which store holds the tickets, and that
-  `dk guide` carries the rules. Idempotent; creates AGENTS.md when it is
-  missing.
+  repository: in a directory it commits the scaffold on `main`, seeds the
+  ticket branch and leaves that branch checked out. Commands then work there
+  without flags or bindings. A remote URL gets both branches pushed. Existing
+  repositories and existing branches are refused — the scaffold never
+  overwrites anything. The scaffold carries dricket.toml with the defaults,
+  prefixes.toml, README.md, AGENTS.md, CLAUDE.md and a `.gitattributes` that
+  normalizes line endings.
+- `dk setup-agent` writes the store/guide pointer into the current project's
+  AGENTS.md and installs the embedded canonical skill at
+  `.agents/skills/dricket/SKILL.md`. It works offline, is idempotent and
+  preflights both outputs. A differing existing skill is refused without any
+  write; user content is never overwritten. JSON retains `file`/`written` and
+  adds `skill_file`/`skill_written`.
 - **Profiles** bundle one actor's identity in the user config
   (`<user config dir>/dricket/config.toml`, outside any repository):
 
@@ -281,13 +300,13 @@ without any of them `add` fails with a hint (ADR-0008).
 
 ## Leases and monitoring
 
-- `extend <id> --reason` lengthens the lease of a ticket its owner still
+- `extend <id> -m <reason>` lengthens the lease of a ticket its owner still
   holds: `lease_until = now + lease(size)`, `extensions` grows by one,
   `rev` by one, the reason lands in the log. At most 3 extends per claim
   (starting value); the reason is required.
-- `note <id> <text>` (and `update <id> --note`) appends a log entry and
-  keeps the claim with its owner. Whole-ticket content editing uses the
-  claim → sync → editor → commit workflow.
+- `note <id> -m <text>` appends a log entry and keeps the claim with its owner.
+  Whole-ticket content editing uses the claim → sync → editor → commit
+  workflow.
 - `leases` lists active leases, most urgent first. Status per lease:
   `ok`, `expiring` (less than 20 percent of the lease left), `expired`
   (past `lease_until` plus grace). `quiet` is a separate hint: nothing
@@ -394,7 +413,7 @@ All three guards are configured in dricket.toml (see Configuration).
   a guarantee — rotate credentials that land in a ticket regardless.
   `validate` scans every ticket and comment file, so anything pushed
   around the tool is still detected.
-- **force-release.** `dk force-release <id> --reason "..."` frees a
+- **force-release.** `dk force-release <id> -m "..."` frees a
   ticket without the owner's consent — the runbook answer to dead
   claims. Only owners in `security.admins` may call it; an empty list
   means nobody (fail closed). The reason is mandatory and lands in the

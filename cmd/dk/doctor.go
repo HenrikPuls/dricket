@@ -71,6 +71,9 @@ func runDoctor(e *env, args []string) (any, *cliError) {
 		} else {
 			if err := s.Store.Refresh(ctx); err != nil {
 				add("remote", false, "not reachable: %v", err)
+			} else if s.Store.IsLocal() {
+				add("remote", true, "local repository available, head refreshed")
+				add("push", true, "local fast-forward ref updates; no push credentials required")
 			} else {
 				add("remote", true, "reachable, head fetched")
 				if err := s.Store.PushDryRun(ctx); err != nil {

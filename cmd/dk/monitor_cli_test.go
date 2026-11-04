@@ -56,12 +56,12 @@ func expireLease(t *testing.T, bare, id string) {
 func TestCLIExtendAndLeases(t *testing.T) {
 	bare := setupBareCLI(t)
 
-	code, _, errMsg := runForTest(t, "add", "--prefix", "app", "-c", "long task")
+	code, _, errMsg := runForTest(t, "add", "--prefix", "app", "-m", "long task")
 	if code != 0 {
 		t.Fatalf("add = %d, %q", code, errMsg)
 	}
 
-	code, out, errMsg := runForTest(t, "extend", "--reason", "tests take longer", "app-1")
+	code, out, errMsg := runForTest(t, "extend", "--message", "tests take longer", "app-1")
 	if code != 0 || !strings.Contains(out, "extended app-1 (extensions 1/3") {
 		t.Fatalf("extend = %d, %q, %q", code, out, errMsg)
 	}
@@ -94,16 +94,16 @@ func TestCLIExtendAndLeases(t *testing.T) {
 	}
 }
 
-func TestCLIUpdateNoteInbox(t *testing.T) {
+func TestCLINoteInbox(t *testing.T) {
 	setupBareCLI(t)
-	runForTest(t, "add", "--prefix", "app", "-c", "watched task")
+	runForTest(t, "add", "--prefix", "app", "-m", "watched task")
 
-	code, out, errMsg := runForTest(t, "update", "--note", "root cause found", "app-1")
-	if code != 0 || !strings.Contains(out, "updated app-1 (rev 2, claim kept)") {
-		t.Fatalf("update = %d, %q, %q", code, out, errMsg)
+	code, out, errMsg := runForTest(t, "note", "-m", "root cause found", "app-1")
+	if code != 0 || !strings.Contains(out, "noted on app-1 (rev 2, claim kept)") {
+		t.Fatalf("note = %d, %q, %q", code, out, errMsg)
 	}
 
-	code, out, errMsg = runForTest(t, "note", "app-1", "second observation")
+	code, out, errMsg = runForTest(t, "note", "app-1", "-m", "second observation")
 	if code != 0 || !strings.Contains(out, "noted on app-1") {
 		t.Fatalf("note = %d, %q, %q", code, out, errMsg)
 	}
@@ -113,16 +113,10 @@ func TestCLIUpdateNoteInbox(t *testing.T) {
 		t.Fatalf("inbox first = %d, %q", code, out)
 	}
 
-	runForTest(t, "note", "app-1", "third observation")
+	runForTest(t, "note", "app-1", "-m", "third observation")
 	code, out, _ = runForTest(t, "inbox", "app-1")
 	if code != 0 || !strings.Contains(out, "note app-1: third observation") {
 		t.Fatalf("inbox second = %d, %q", code, out)
-	}
-
-	// update without --note is a usage error in stage v1.
-	code, _, _ = runForTest(t, "update", "app-1")
-	if code != exitUsage {
-		t.Fatalf("update without note = %d; want 2", code)
 	}
 }
 
@@ -159,7 +153,7 @@ func TestCLIIsolatesWorkingCopiesPerOwner(t *testing.T) {
 
 	// Same store, two owners: both must work concurrently.
 	t.Setenv("DK_OWNER", "alice")
-	code, _, errMsg := runForTest(t, "add", "--prefix", "app", "-c", "from alice", "--unclaimed")
+	code, _, errMsg := runForTest(t, "add", "--prefix", "app", "-m", "from alice", "--unclaimed")
 	if code != 0 {
 		t.Fatalf("alice add = %d, %q", code, errMsg)
 	}

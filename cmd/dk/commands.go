@@ -15,38 +15,37 @@ import (
 	"github.com/HenrikPuls/dricket/internal/ticket"
 )
 
-// serviceCmds are the stage v0 and v1 commands; each maps to one service call.
+// serviceCmds are the ticket commands; each maps to one service call.
 var serviceCmds = []command{
-	{name: "add", synopsis: "create a ticket", run: runAdd},
-	{name: "claim", synopsis: "take a ticket", run: runClaim},
-	{name: "sync", synopsis: "fast-forward a clean ticket checkout", run: runSync},
-	{name: "restore", synopsis: "discard local changes to one path", run: runRestore},
-	{name: "commit", synopsis: "validate and publish an edited ticket", run: runCommit},
-	{name: "release", synopsis: "push and free a ticket", run: runRelease},
-	{name: "extend", synopsis: "extend the lease of a ticket", run: runExtend},
-	{name: "update", synopsis: "add a progress note, keep the claim", run: runUpdate},
-	{name: "note", synopsis: "add a log entry", run: runNote},
-	{name: "comment", synopsis: "append a comment", run: runComment},
-	{name: "set", synopsis: "change a free field", run: runSet},
-	{name: "ls", synopsis: "list tickets", run: runLs},
-	{name: "next", synopsis: "next suitable ticket", run: runNext},
-	{name: "search", synopsis: "full-text search", run: runSearch},
-	{name: "validate", synopsis: "deep checks over store or code range", run: runValidate},
-	{name: "leases", synopsis: "show leases and their status", run: runLeases},
-	{name: "inbox", synopsis: "what is new for a ticket", run: runInbox},
-	{name: "show", synopsis: "display a ticket", run: runShow},
-	{name: "force-release", synopsis: "admin release with a reason", run: runForceRelease},
-	{name: "lint", synopsis: "check tickets", run: runLint},
-	{name: "doctor", synopsis: "check the local setup", run: runDoctor},
+	{name: "add", usage: "add [options]", group: "Work", synopsis: "create a ticket", flags: newAddFlagSet, run: runAdd},
+	{name: "claim", usage: "claim <id> [options]", group: "Work", synopsis: "take a ticket", flags: newClaimFlagSet, run: runClaim},
+	{name: "sync", usage: "sync", group: "Work", synopsis: "fast-forward a clean ticket checkout", run: runSync},
+	{name: "restore", usage: "restore <path>", group: "Work", synopsis: "discard local changes to one path", run: runRestore},
+	{name: "commit", usage: "commit <id>", group: "Work", synopsis: "validate and publish an edited ticket", run: runCommit},
+	{name: "release", usage: "release <id> [options]", group: "Work", synopsis: "publish and free a ticket", flags: newReleaseFlagSet, run: runRelease},
+	{name: "extend", usage: "extend <id> -m <reason>", group: "Work", synopsis: "extend the lease of a ticket", flags: newExtendFlagSet, run: runExtend},
+	{name: "note", usage: "note <id> -m <text>", group: "Work", synopsis: "add a progress note, keep the claim", flags: newNoteFlagSet, run: runNote},
+	{name: "comment", usage: "comment <id> (-m <text> | -F <file>)", group: "Work", synopsis: "append a comment", flags: newCommentFlagSet, run: runComment},
+	{name: "set", usage: "set <id> key=value [options]", group: "Work", synopsis: "change a free field", flags: newSetFlagSet, run: runSet},
+	{name: "ls", usage: "ls [options]", group: "Inspect", synopsis: "list tickets", flags: newLsFlagSet, run: runLs},
+	{name: "next", usage: "next [options]", group: "Work", synopsis: "next suitable ticket", flags: newNextFlagSet, run: runNext},
+	{name: "search", usage: "search [options] <query>", group: "Inspect", synopsis: "full-text search", flags: newSearchFlagSet, run: runSearch},
+	{name: "validate", usage: "validate [--trailers <range>]", group: "Check", synopsis: "deep checks over store or code range", flags: newValidateFlagSet, run: runValidate},
+	{name: "leases", usage: "leases [options]", group: "Inspect", synopsis: "show leases and their status", flags: newLeasesFlagSet, run: runLeases},
+	{name: "inbox", usage: "inbox <id>", group: "Inspect", synopsis: "what is new for a ticket", run: runInbox},
+	{name: "show", usage: "show <id>", group: "Inspect", synopsis: "display a ticket", run: runShow},
+	{name: "force-release", usage: "force-release <id> -m <reason> [options]", group: "Work", synopsis: "admin release with a reason", flags: newForceReleaseFlagSet, run: runForceRelease},
+	{name: "lint", usage: "lint", group: "Check", synopsis: "check tickets", run: runLint},
+	{name: "doctor", usage: "doctor", group: "Check", synopsis: "check the local setup", run: runDoctor},
 }
 
 // rootCmds are the commands that work without a store behind them.
 var rootCmds = []command{
-	{name: "version", synopsis: "print the tool version", run: runVersion},
-	{name: "init", synopsis: "set up a ticket store in a directory or at a URL", run: runInit},
-	{name: "use", synopsis: "bind store and project prefix for this directory", run: runUse},
-	{name: "setup-agent", synopsis: "point AGENTS.md at this store", run: runSetupAgent},
-	{name: "guide", synopsis: "print the agent guide", run: runGuide},
+	{name: "version", usage: "version", group: "Check", synopsis: "print the tool version", run: runVersion},
+	{name: "init", usage: "init [--branch <name>] [dir-or-url] [prefix]", group: "Setup", synopsis: "set up a ticket store in a directory or at a URL", flags: newInitFlagSet, run: runInit},
+	{name: "use", usage: "use [--store <remote>#<branch>] [prefix]", group: "Setup", synopsis: "bind store and project prefix for this directory", run: runUse},
+	{name: "setup-agent", usage: "setup-agent", group: "Setup", synopsis: "point AGENTS.md at this store", run: runSetupAgent},
+	{name: "guide", usage: "guide", group: "Setup", synopsis: "print the agent guide", run: runGuide},
 }
 
 func init() {
@@ -132,7 +131,38 @@ func newFlagSet(name string) *flag.FlagSet {
 
 // parseFlags parses after the command has defined its flags.
 func parseFlags(fs *flag.FlagSet, args []string) *cliError {
-	if err := fs.Parse(args); err != nil {
+	var options, positional []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			positional = append(positional, args[i+1:]...)
+			break
+		}
+		if a == "-" || !strings.HasPrefix(a, "-") {
+			positional = append(positional, a)
+			continue
+		}
+		name := a
+		if eq := strings.IndexByte(name, '='); eq >= 0 {
+			name = name[:eq]
+		}
+		registered := fs.Lookup(strings.TrimLeft(name, "-"))
+		options = append(options, a)
+		if registered == nil || strings.Contains(a, "=") {
+			continue
+		}
+		if boolean, ok := registered.Value.(interface{ IsBoolFlag() bool }); ok && boolean.IsBoolFlag() {
+			continue
+		}
+		if i+1 >= len(args) {
+			return usageError("%s: %s requires a value (see --help)", fs.Name(), a)
+		}
+		i++
+		options = append(options, args[i]) // #nosec G602 -- the bounds check immediately above covers i+1
+	}
+	ordered := append(options, "--")
+	ordered = append(ordered, positional...)
+	if err := fs.Parse(ordered); err != nil {
 		return usageError("%s: %v (see --help)", fs.Name(), err)
 	}
 	return nil
@@ -170,26 +200,62 @@ func splitComma(s string) []string {
 
 // ------------------------------------------------------------------ add --
 
-func runAdd(e *env, args []string) (any, *cliError) {
+func stringFlag(fs *flag.FlagSet, name string) string {
+	return fs.Lookup(name).Value.(flag.Getter).Get().(string)
+}
+
+func textFlag(fs *flag.FlagSet) string { return stringFlag(fs, "message") }
+
+func boolFlag(fs *flag.FlagSet, name string) bool {
+	return fs.Lookup(name).Value.(flag.Getter).Get().(bool)
+}
+
+func intFlag(fs *flag.FlagSet, name string) int {
+	return fs.Lookup(name).Value.(flag.Getter).Get().(int)
+}
+
+func optionValueRequired(fs *flag.FlagSet, arg string) bool {
+	name := arg
+	if eq := strings.IndexByte(name, '='); eq >= 0 {
+		return false
+	}
+	registered := fs.Lookup(strings.TrimLeft(name, "-"))
+	if registered == nil {
+		return false
+	}
+	if boolean, ok := registered.Value.(interface{ IsBoolFlag() bool }); ok && boolean.IsBoolFlag() {
+		return false
+	}
+	return true
+}
+
+func newAddFlagSet() *flag.FlagSet {
 	fs := newFlagSet("add")
-	title := fs.String("c", "", "title")
-	desc := fs.String("d", "", "description ('-' for stdin)")
-	fromFile := fs.String("F", "", "read the description from a file")
-	labels := fs.String("l", "", "comma-separated labels")
-	depends := fs.String("depends", "", "comma-separated ticket ids")
-	parent := fs.String("parent", "", "parent ticket id")
-	prefix := fs.String("prefix", "", "project prefix (default: DK_PROJECT, bindings, or the store's only registered prefix)")
-	unclaimed := fs.Bool("unclaimed", false, "create the ticket without claiming it")
-	size := fs.String("size", "M", "claim size S, M or L")
-	kind := fs.String("kind", "agent", "creator kind agent or human")
-	priority := fs.String("priority", "", "priority from the store's configured values (default from dricket.toml)")
+	var message string
+	fs.StringVar(&message, "m", "", "ticket title")
+	fs.StringVar(&message, "message", "", "ticket title")
+	fs.String("d", "", "description ('-' for stdin)")
+	fs.String("F", "", "read the description from a file")
+	fs.String("l", "", "comma-separated labels")
+	fs.String("depends", "", "comma-separated ticket ids")
+	fs.String("parent", "", "parent ticket id")
+	fs.String("prefix", "", "project prefix (default: DK_PROJECT, bindings, or the store's only registered prefix)")
+	fs.Bool("unclaimed", false, "create the ticket without claiming it")
+	fs.String("size", "M", "claim size S, M or L")
+	fs.String("kind", "agent", "creator kind agent or human")
+	fs.String("priority", "", "priority from the store's configured values (default from dricket.toml)")
+	return fs
+}
+
+func runAdd(e *env, args []string) (any, *cliError) {
+	fs := newAddFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
 	if fs.NArg() != 0 {
 		return nil, usageError("add: no positional arguments expected")
 	}
-	description, derr := readText(*desc, *fromFile)
+	description, derr := readText(stringFlag(fs, "d"), stringFlag(fs, "F"))
 	if derr != nil {
 		return nil, derr
 	}
@@ -199,7 +265,7 @@ func runAdd(e *env, args []string) (any, *cliError) {
 	}
 	// Project prefix: flag, then DK_PROJECT, then bindings, then the
 	// store's single registered prefix.
-	prefixValue, prefixSrc, perr := e.prefixForAdd(context.Background(), *prefix, s)
+	prefixValue, prefixSrc, perr := e.prefixForAdd(context.Background(), stringFlag(fs, "prefix"), s)
 	if perr != nil {
 		return nil, perr
 	}
@@ -211,15 +277,15 @@ func runAdd(e *env, args []string) (any, *cliError) {
 	}
 	id, err := s.Add(context.Background(), service.AddRequest{
 		Prefix:      prefixValue,
-		Title:       *title,
+		Title:       textFlag(fs),
 		Description: description,
-		Labels:      splitComma(*labels),
-		Depends:     splitComma(*depends),
-		Parent:      *parent,
-		Unclaimed:   *unclaimed,
-		Size:        ticket.Size(strings.ToUpper(*size)),
-		Kind:        ticket.Kind(*kind),
-		Priority:    *priority,
+		Labels:      splitComma(stringFlag(fs, "l")),
+		Depends:     splitComma(stringFlag(fs, "depends")),
+		Parent:      stringFlag(fs, "parent"),
+		Unclaimed:   boolFlag(fs, "unclaimed"),
+		Size:        ticket.Size(strings.ToUpper(stringFlag(fs, "size"))),
+		Kind:        ticket.Kind(stringFlag(fs, "kind")),
+		Priority:    stringFlag(fs, "priority"),
 	})
 	if err != nil {
 		return nil, wrapErr(err)
@@ -232,10 +298,15 @@ func runAdd(e *env, args []string) (any, *cliError) {
 
 // --------------------------------------------------------------- claim --
 
-func runClaim(e *env, args []string) (any, *cliError) {
+func newClaimFlagSet() *flag.FlagSet {
 	fs := newFlagSet("claim")
-	size := fs.String("size", "M", "lease size S, M or L")
-	kind := fs.String("kind", "agent", "actor kind agent or human")
+	fs.String("size", "M", "lease size S, M or L")
+	fs.String("kind", "agent", "actor kind agent or human")
+	return fs
+}
+
+func runClaim(e *env, args []string) (any, *cliError) {
+	fs := newClaimFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
@@ -246,7 +317,7 @@ func runClaim(e *env, args []string) (any, *cliError) {
 	if cerr != nil {
 		return nil, cerr
 	}
-	res, err := s.Claim(context.Background(), fs.Arg(0), ticket.Size(strings.ToUpper(*size)), ticket.Kind(*kind))
+	res, err := s.Claim(context.Background(), fs.Arg(0), ticket.Size(strings.ToUpper(stringFlag(fs, "size"))), ticket.Kind(stringFlag(fs, "kind")))
 	if err != nil {
 		return nil, wrapErr(err)
 	}
@@ -262,10 +333,17 @@ func runClaim(e *env, args []string) (any, *cliError) {
 
 // ------------------------------------------------------------- release --
 
-func runRelease(e *env, args []string) (any, *cliError) {
+func newReleaseFlagSet() *flag.FlagSet {
 	fs := newFlagSet("release")
-	stage := fs.String("stage", "review", "target stage")
-	result := fs.String("result", "", "result note")
+	fs.String("stage", "review", "target stage")
+	var message string
+	fs.StringVar(&message, "m", "", "result note")
+	fs.StringVar(&message, "message", "", "result note")
+	return fs
+}
+
+func runRelease(e *env, args []string) (any, *cliError) {
+	fs := newReleaseFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
@@ -276,7 +354,7 @@ func runRelease(e *env, args []string) (any, *cliError) {
 	if cerr != nil {
 		return nil, cerr
 	}
-	res, err := s.Release(context.Background(), fs.Arg(0), ticket.Stage(*stage), *result)
+	res, err := s.Release(context.Background(), fs.Arg(0), ticket.Stage(stringFlag(fs, "stage")), textFlag(fs))
 	if err != nil {
 		return nil, wrapErr(err)
 	}
@@ -288,19 +366,27 @@ func runRelease(e *env, args []string) (any, *cliError) {
 
 // ------------------------------------------------------------- comment --
 
-func runComment(e *env, args []string) (any, *cliError) {
+func newCommentFlagSet() *flag.FlagSet {
 	fs := newFlagSet("comment")
-	file := fs.String("F", "", "read the comment from a file")
+	var message string
+	fs.StringVar(&message, "m", "", "comment text")
+	fs.StringVar(&message, "message", "", "comment text")
+	fs.String("F", "", "read the comment from a file")
+	return fs
+}
+
+func runComment(e *env, args []string) (any, *cliError) {
+	fs := newCommentFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
-	if fs.NArg() < 1 {
-		return nil, usageError("comment: a ticket id and the text (argument or -F file) are required")
+	if fs.NArg() != 1 || (textFlag(fs) == "" && stringFlag(fs, "F") == "") {
+		return nil, usageError("comment: a ticket id and -m/--message or -F file are required")
 	}
 	id := fs.Arg(0)
-	text := strings.Join(fs.Args()[1:], "\n")
-	if *file != "" {
-		b, err := os.ReadFile(*file)
+	text := textFlag(fs)
+	if file := stringFlag(fs, "F"); file != "" {
+		b, err := os.ReadFile(file) // #nosec G304 -- the -F flag reads exactly the named file
 		if err != nil {
 			return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 		}
@@ -322,9 +408,14 @@ func runComment(e *env, args []string) (any, *cliError) {
 
 // ------------------------------------------------------------------ set --
 
-func runSet(e *env, args []string) (any, *cliError) {
+func newSetFlagSet() *flag.FlagSet {
 	fs := newFlagSet("set")
-	ifVersion := fs.Int("if-version", 0, "expected rev of the ticket")
+	fs.Int("if-version", 0, "expected rev of the ticket")
+	return fs
+}
+
+func runSet(e *env, args []string) (any, *cliError) {
+	fs := newSetFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
@@ -339,7 +430,7 @@ func runSet(e *env, args []string) (any, *cliError) {
 	if cerr != nil {
 		return nil, cerr
 	}
-	res, err := s.Set(context.Background(), fs.Arg(0), key, value, *ifVersion)
+	res, err := s.Set(context.Background(), fs.Arg(0), key, value, intFlag(fs, "if-version"))
 	if err != nil {
 		return nil, wrapErr(err)
 	}
@@ -351,11 +442,16 @@ func runSet(e *env, args []string) (any, *cliError) {
 
 // ------------------------------------------------------------------ ls --
 
-func runLs(e *env, args []string) (any, *cliError) {
+func newLsFlagSet() *flag.FlagSet {
 	fs := newFlagSet("ls")
-	stage := fs.String("s", "", "filter by stage")
-	owner := fs.String("o", "", "filter by owner (@me)")
-	prefix := fs.String("p", "", "filter by project prefix")
+	fs.String("s", "", "filter by stage")
+	fs.String("o", "", "filter by owner (@me)")
+	fs.String("p", "", "filter by project prefix")
+	return fs
+}
+
+func runLs(e *env, args []string) (any, *cliError) {
+	fs := newLsFlagSet()
 	if cerr := parseFlags(fs, args); cerr != nil {
 		return nil, cerr
 	}
@@ -364,7 +460,7 @@ func runLs(e *env, args []string) (any, *cliError) {
 		return nil, cerr
 	}
 	items, warnings, err := s.List(context.Background(), service.ListFilter{
-		Stage: *stage, Owner: *owner, Prefix: *prefix,
+		Stage: stringFlag(fs, "s"), Owner: stringFlag(fs, "o"), Prefix: stringFlag(fs, "p"),
 	})
 	if err != nil {
 		return nil, wrapErr(err)

@@ -8,6 +8,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -61,10 +62,6 @@ type env struct {
 	stdout   io.Writer
 	stderr   io.Writer
 	json     bool
-	quiet    bool
-	noColor  bool
-	assume   bool // -y
-	dryRun   bool // -n
 	store    string
 	profile  string
 	svcCache *service.Service
@@ -82,7 +79,10 @@ type env struct {
 // command is one subcommand of the registry.
 type command struct {
 	name     string
+	usage    string
+	group    string
 	synopsis string
+	flags    func() *flag.FlagSet
 	run      func(e *env, args []string) (any, *cliError)
 }
 
@@ -142,13 +142,32 @@ func run(args []string) int {
 		return exitUsage
 	}
 	name, cmdArgs := rest[0], rest[1:]
-	switch name {
-	case "-h", "--help", "help":
+	if name == "-h" || name == "--help" {
 		_, _ = io.WriteString(e.stdout, usageText())
 		return exitOK
 	}
+	if name == "help" {
+		if len(cmdArgs) == 0 {
+			_, _ = io.WriteString(e.stdout, usageText())
+			return exitOK
+		}
+		if len(cmdArgs) != 1 {
+			return e.fail(usageError("help: at most one command expected"))
+		}
+		for _, c := range registry {
+			if c.name == cmdArgs[0] {
+				_, _ = io.WriteString(e.stdout, commandHelp(c))
+				return exitOK
+			}
+		}
+		return e.fail(usageError("unknown help topic %q", cmdArgs[0]))
+	}
 	for _, c := range registry {
 		if c.name == name {
+			if helpRequested(c, cmdArgs) {
+				_, _ = io.WriteString(e.stdout, commandHelp(c))
+				return exitOK
+			}
 			data, cerr := c.run(e, cmdArgs)
 			if cerr != nil {
 				return e.fail(cerr)
@@ -162,24 +181,49 @@ func run(args []string) int {
 	return e.fail(usageError("unknown command %q (see --help)", name))
 }
 
-// parseGlobals extracts global flags, which may appear before the command.
-// A non-nil result means the flag set already produced the output
-// (--version) and the caller exits successfully.
+func helpRequested(c command, args []string) bool {
+	var fs *flag.FlagSet
+	if c.flags != nil {
+		fs = c.flags()
+	}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			return false
+		}
+		if arg == "-h" || arg == "--help" {
+			return true
+		}
+		if fs != nil && optionValueRequired(fs, arg) && i+1 < len(args) {
+			i++
+		}
+	}
+	return false
+}
+
+// parseGlobals extracts global options without consuming command-option values
+// or anything after --. A non-nil result handles --version immediately.
 func parseGlobals(e *env, args []string) ([]string, any, *cliError) {
 	var rest []string
+	var commandFlags *flag.FlagSet
+	commandSeen := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if commandSeen && a == "--" {
+			rest = append(rest, args[i:]...)
+			break
+		}
+		if commandSeen && commandFlags != nil && optionValueRequired(commandFlags, a) {
+			rest = append(rest, a)
+			if i+1 < len(args) {
+				i++
+				rest = append(rest, args[i])
+			}
+			continue
+		}
 		switch {
 		case a == "--json":
 			e.json = true
-		case a == "-q" || a == "--quiet":
-			e.quiet = true
-		case a == "--no-color":
-			e.noColor = true
-		case a == "-y" || a == "--assume-yes":
-			e.assume = true
-		case a == "-n" || a == "--dry-run":
-			e.dryRun = true
 		case a == "--store" || a == "--profile":
 			if i+1 >= len(args) {
 				return nil, nil, usageError("%s requires a value", a)
@@ -198,6 +242,15 @@ func parseGlobals(e *env, args []string) ([]string, any, *cliError) {
 			return nil, versionData(), nil
 		default:
 			rest = append(rest, a)
+			if !commandSeen {
+				commandSeen = true
+				for _, c := range registry {
+					if c.name == a && c.flags != nil {
+						commandFlags = c.flags()
+						break
+					}
+				}
+			}
 		}
 	}
 	return rest, nil, nil
@@ -280,22 +333,47 @@ func (e *env) fail(err *cliError) int {
 func usageText() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "dricket (%s) - Git-native ticketing for humans and AI agents\n\n", version)
-	b.WriteString("Usage: dricket [global flags] <command> [flags] [args]\n\n")
-	b.WriteString("Command flags come before positional arguments.\n")
-	b.WriteString("Global flags:\n")
+	b.WriteString("Usage: dk [global options] <command> [options] [args]\n\n")
+	b.WriteString("Global options:\n")
 	b.WriteString("  --json            data output as JSON with schema_version\n")
-	b.WriteString("  -q, --quiet       suppress non-essential messages\n")
-	b.WriteString("  --no-color        never colorise output (NO_COLOR is honoured)\n")
-	b.WriteString("  -y, --assume-yes  answer prompts with yes\n")
-	b.WriteString("  -n, --dry-run     show what would be done\n")
 	b.WriteString("  --store <path>    ticket store (remote, branch, path)\n")
 	b.WriteString("  --profile <name>  identity profile\n")
 	b.WriteString("  --version         print the version and exit\n")
 	b.WriteString("  -h, --help        show this help\n\n")
-	b.WriteString("Commands:\n")
-	for _, c := range registry {
-		fmt.Fprintf(&b, "  %-17s %s\n", c.name, c.synopsis)
+	for _, group := range []string{"Setup", "Work", "Inspect", "Check"} {
+		b.WriteString(group + ":\n")
+		for _, c := range registry {
+			if c.group == group {
+				fmt.Fprintf(&b, "  %-17s %s\n", c.name, c.synopsis)
+			}
+		}
+		b.WriteString("\n")
 	}
-	b.WriteString("\nThe command set grows with the roadmap; see docs/CONCEPT.md.\n")
+	b.WriteString("Use dk help <command> for command options.\n")
+	return b.String()
+}
+
+func commandHelp(c command) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Usage: dk %s\n\n%s\n", c.usage, c.synopsis)
+	if c.flags == nil {
+		return b.String()
+	}
+	fs := c.flags()
+	b.WriteString("\nOptions:\n")
+	fs.VisitAll(func(f *flag.Flag) {
+		name := "--" + f.Name
+		if len(f.Name) == 1 {
+			name = "-" + f.Name
+		}
+		if boolean, ok := f.Value.(interface{ IsBoolFlag() bool }); !ok || !boolean.IsBoolFlag() {
+			name += " <value>"
+		}
+		fmt.Fprintf(&b, "  %-24s %s", name, f.Usage)
+		if f.DefValue != "" && f.DefValue != "false" && f.DefValue != "0" {
+			fmt.Fprintf(&b, " (default %s)", f.DefValue)
+		}
+		b.WriteString("\n")
+	})
 	return b.String()
 }

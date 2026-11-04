@@ -6,7 +6,27 @@ and the project follows [Semantic Versioning](https://semver.org/). Versions
 below 1.0.0 may change the on-disk format and the CLI; such changes are always
 listed here.
 
-## [Unreleased]
+## [0.5.0] - 2026-11-04
+
+### Added
+- `dk setup-agent` installs the embedded dricket Agent Skill at
+  `.agents/skills/dricket/SKILL.md`, offline and without overwriting a modified
+  skill. `dk guide` remains the version-matched runtime reference.
+- Single-repository local operation: non-bare filesystem stores publish through
+  atomic fast-forward ref updates, while remote and bare stores keep push CAS
+  (ADR-0010).
+
+### Changed
+- `dk init` leaves the ticket branch checked out, and discovery reads committed
+  configuration from `main` even from nested ticket directories.
+- Local writes preserve unrelated and staged edits; a pre-existing same-file
+  checkout conflict reports `conflict` with exit 12.
+- Existing text/reason inputs use `-m/--message`; `add -c`, positional text on
+  `note`/`comment`, `--note`, `--result` and `--reason` are removed. The
+  redundant `update` command is removed in favor of `note`.
+- Root help is grouped by task and every command supports `--help` and
+  `dk help <command>`. The previously ineffective global flags `-q/--quiet`,
+  `--no-color`, `-y/--assume-yes` and `-n/--dry-run` are removed.
 
 ## [0.4.0] - 2026-11-03
 

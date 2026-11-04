@@ -70,8 +70,9 @@ docs/CONCEPT.md.
 
 ## Project rules (MUST, specific to dricket)
 
-- Every write is: fetch, check preconditions on the fresh head, commit, push,
-  bounded retry with jitter. Never rebase.
+- Every write is: refresh an immutable base, check preconditions, commit,
+  publish by fast-forward push (remote/bare) or local ref CAS, bounded retry
+  with jitter. Never rebase.
 - stdout is data, stderr is messages. `--json` carries `schema_version`. No
   prompts without a TTY. Honour `NO_COLOR`.
 - Exit codes exactly as in docs/CONCEPT.md.

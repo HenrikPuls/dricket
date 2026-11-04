@@ -15,7 +15,8 @@ import (
 // Workspace is a user-owned ticket checkout. Unlike the private store, it
 // can contain unique uncommitted work and is never cleaned implicitly.
 type Workspace struct {
-	dir string
+	dir                   string
+	beforeFinalResetCheck func() // deterministic race injection for adoption tests
 }
 
 // OpenWorkspace finds the enclosing Git working tree.
@@ -58,7 +59,7 @@ func (w *Workspace) git(ctx context.Context, args ...string) (string, error) {
 	return string(out), err
 }
 
-// Sync fetches the current ticket branch and fast-forwards a clean checkout.
+// Sync fast-forwards a clean checkout; local stores already share the ref.
 func (w *Workspace) Sync(ctx context.Context) error {
 	if err := w.requireClean(ctx); err != nil {
 		return err
@@ -70,6 +71,10 @@ func (w *Workspace) Sync(ctx context.Context) error {
 	branch = strings.TrimSpace(branch)
 	if err := checkRefName(ctx, branch); err != nil {
 		return err
+	}
+	origin, err := w.git(ctx, "remote", "get-url", "origin")
+	if err != nil || strings.TrimSpace(origin) == "" {
+		return nil // local stores already share the ticket ref with the workspace
 	}
 	if _, err := w.git(ctx, "fetch", "--quiet", "origin", "refs/heads/"+branch); err != nil {
 		return fmt.Errorf("fetch ticket branch: %w", err)
@@ -131,17 +136,54 @@ func (w *Workspace) Adopt(ctx context.Context, commit, path, expected string) er
 		return errors.New("workspace is not on a local branch")
 	}
 	branch = strings.TrimSpace(branch)
-	if _, err := w.git(ctx, "fetch", "--quiet", "origin", "refs/heads/"+branch); err != nil {
-		return fmt.Errorf("fetch accepted commit: %w", err)
+	historyRef := "refs/heads/" + branch
+	origin, err := w.git(ctx, "remote", "get-url", "origin")
+	local := err != nil || strings.TrimSpace(origin) == ""
+	if !local {
+		if _, err := w.git(ctx, "fetch", "--quiet", "origin", historyRef); err != nil {
+			return fmt.Errorf("fetch accepted commit: %w", err)
+		}
+		historyRef = "FETCH_HEAD"
+	} else {
+		release, busy, lockErr := lockGitRepository(ctx, w.dir)
+		if lockErr != nil {
+			return lockErr
+		}
+		if busy {
+			return errors.New("local adoption is busy with another publication")
+		}
+		defer release()
 	}
 	if _, err := w.git(ctx, "cat-file", "-e", commit+"^{commit}"); err != nil {
-		return errors.New("accepted commit was not fetched")
+		return errors.New("accepted commit is not available in the store")
 	}
-	if _, err := w.git(ctx, "merge-base", "--is-ancestor", commit, "FETCH_HEAD"); err != nil {
-		return errors.New("accepted commit is not in the remote ticket history")
+	if _, err := w.git(ctx, "merge-base", "--is-ancestor", commit, historyRef); err != nil {
+		return errors.New("accepted commit is not in the ticket history")
 	}
 	if _, err := w.git(ctx, "merge-base", "--is-ancestor", "HEAD", commit); err != nil {
 		return errors.New("ticket checkout has unpushed or divergent commits; local history was left unchanged")
+	}
+	if w.beforeFinalResetCheck != nil {
+		w.beforeFinalResetCheck()
+	}
+	if local {
+		if _, err := w.git(ctx, "merge-base", "--is-ancestor", commit, historyRef); err != nil {
+			return errors.New("accepted commit is no longer in the ticket history")
+		}
+		head, err := w.git(ctx, "rev-parse", "HEAD")
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(head) != commit {
+			return errors.New("a later local commit was accepted; checkout was left unchanged")
+		}
+	}
+	content, err = os.ReadFile(filepath.Join(w.dir, filepath.FromSlash(clean))) // #nosec G304 -- validated in-repo path
+	if err != nil {
+		return err
+	}
+	if string(content) != expected {
+		return errors.New("edited file changed while the commit was running")
 	}
 	if err := w.requireOnly(ctx, clean); err != nil {
 		return err

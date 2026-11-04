@@ -50,7 +50,8 @@ func (s *Service) Commit(ctx context.Context, ws *store.Workspace, id string) (C
 	var toWrite ticket.Ticket
 	var result CommitResult
 	spec := store.WriteSpec{
-		Message: "dricket: commit " + id,
+		Message:          "dricket: commit " + id,
+		PreserveWorktree: true,
 		Check: func(h store.Head) error {
 			fresh, _, err := loadTicket(h, path)
 			if err != nil {

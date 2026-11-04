@@ -75,6 +75,8 @@ func ExitCode(err error) int {
 		switch we.Outcome {
 		case store.PushFailed, store.Timeout, store.PushUnknown:
 			return 15
+		case store.CheckoutConflict:
+			return 12
 		default:
 			return 1
 		}
@@ -90,10 +92,14 @@ func KindOf(err error) string {
 	}
 	var we *store.WriteError
 	if errors.As(err, &we) {
-		if we.Outcome == store.PushUnknown {
+		switch we.Outcome {
+		case store.PushUnknown:
 			return KindOutcomeUnknown
+		case store.CheckoutConflict:
+			return KindConflict
+		default:
+			return KindNetwork
 		}
-		return KindNetwork
 	}
 	return KindError
 }

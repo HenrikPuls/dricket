@@ -49,7 +49,7 @@ func setupBareCLI(t *testing.T) string {
 func TestCLIHappyPath(t *testing.T) {
 	setupBareCLI(t)
 
-	code, out, errMsg := runForTest(t, "add", "--prefix", "app", "-c", "Login error", "--unclaimed", "-l", "bug,auth")
+	code, out, errMsg := runForTest(t, "add", "--prefix", "app", "-m", "Login error", "--unclaimed", "-l", "bug,auth")
 	if code != 0 || strings.TrimSpace(out) != "app-1" {
 		t.Fatalf("add = %d, %q, %q", code, out, errMsg)
 	}
@@ -64,7 +64,7 @@ func TestCLIHappyPath(t *testing.T) {
 		t.Fatalf("show = %d, %q, %q", code, out, errMsg)
 	}
 
-	code, out, errMsg = runForTest(t, "comment", "app-1", "first comment")
+	code, out, errMsg = runForTest(t, "comment", "app-1", "-m", "first comment")
 	if code != 0 || !strings.Contains(out, "/comments/") || !strings.HasSuffix(strings.TrimSpace(out), "-cli-tester.md") {
 		t.Fatalf("comment = %d, %q, %q", code, out, errMsg)
 	}
@@ -74,7 +74,7 @@ func TestCLIHappyPath(t *testing.T) {
 		t.Fatalf("set = %d, %q, %q", code, out, errMsg)
 	}
 
-	code, out, errMsg = runForTest(t, "release", "--result", "fix on dk/app-1", "app-1")
+	code, out, errMsg = runForTest(t, "release", "--message", "fix on dk/app-1", "app-1")
 	if code != 0 || !strings.Contains(out, "released app-1 -> review") {
 		t.Fatalf("release = %d, %q, %q", code, out, errMsg)
 	}
@@ -93,7 +93,7 @@ func TestCLIHappyPath(t *testing.T) {
 func TestCLIJSONEnvelopes(t *testing.T) {
 	setupBareCLI(t)
 
-	code, out, _ := runForTest(t, "--json", "add", "--prefix", "app", "-c", "json ticket", "--unclaimed")
+	code, out, _ := runForTest(t, "--json", "add", "--prefix", "app", "-m", "json ticket", "--unclaimed")
 	if code != 0 {
 		t.Fatalf("add = %d", code)
 	}
@@ -124,7 +124,7 @@ func TestCLIJSONEnvelopes(t *testing.T) {
 
 func TestCLIExitCodes(t *testing.T) {
 	setupBareCLI(t)
-	runForTest(t, "add", "--prefix", "app", "-c", "x", "--unclaimed")
+	runForTest(t, "add", "--prefix", "app", "-m", "x", "--unclaimed")
 
 	cases := []struct {
 		args []string
@@ -133,7 +133,7 @@ func TestCLIExitCodes(t *testing.T) {
 		{[]string{"show", "app-99"}, 10},
 		{[]string{"set", "app-1", "stage=done"}, 14},
 		{[]string{"claim", "NOT-AN-ID"}, 14},
-		{[]string{"add", "-c", "no prefix"}, 2},
+		{[]string{"add", "-m", "no prefix"}, 2},
 		{[]string{"bogus"}, 2},
 	}
 	for _, c := range cases {

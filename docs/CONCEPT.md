@@ -6,7 +6,7 @@ Concept v0.1 · 2 November 2026 · License: GPL-3.0-or-later
 
 ## TL;DR
 
-dricket is a Git-based ticketing system that coordinates humans and agents without a server of its own: one Markdown folder per ticket, claims via push as compare-and-swap, a CLI called `dricket` (short: `dk`), and any frontend on top. It is a standalone product; drey is its first and primary consumer (see the drey appendix).
+dricket is a Git-based ticketing system that coordinates humans and agents without a server of its own: one Markdown folder per ticket, claims via fast-forward compare-and-swap (remote push or local ref update), a CLI called `dricket` (short: `dk`), and any frontend on top. It is a standalone product; drey is its first and primary consumer (see the drey appendix).
 
 - **Storage:** a separate ticket repo. `main` is protected (config, docs); `tickets` is writable with linear, fast-forward-only history.
 - **IDs:** `PREFIX-N` such as `app-6842`, allocated by push retry. The path never changes.
@@ -40,7 +40,7 @@ Status: concept v0.1. ⚠️ All numbers (leases, retries, limits) are starting 
 
 ## Architecture and repo layout
 
-**Principle.** The Git remote is the single source of truth and also the lock manager. A push that is not a fast-forward is rejected, atomically per ref. That replaces a server.
+**Principle.** The selected Git repository is the single source of truth and also the lock manager. Remote/bare stores reject non-fast-forward pushes atomically per ref; local non-bare stores use expected-old ref updates and checked-out fast-forwards (ADR-0010). That replaces a server.
 
 **Storage as a triple** `(remote, branch, path)`. Default: a dedicated ticket repo, branch `tickets`, path `tickets/`. The mode "orphan branch inside the code repo" is configurable but untested. ⚠️ Do not advertise it as supported.
 
@@ -73,9 +73,9 @@ tickets/
 | Any frontend | display and editing for users | only through `dk --json` |
 | Git hook, CI, scheduled job | `validate`, `leases --check` | no, read only |
 
-**Local copies.** Atomic commands use a private, disposable working copy in the tool's data directory. Whole-ticket editing uses an existing ticket checkout chosen by the user. That checkout contains unique user data while edits are uncommitted and is never cleaned or hard-reset implicitly.
+**Local copies.** Atomic commands use a private, disposable working copy in the tool's data directory. For a local non-bare store this is a linked detached worktree sharing the same Git objects and refs, not a second repository. Whole-ticket editing uses an existing ticket checkout chosen by the user. That checkout contains unique user data while edits are uncommitted and is never cleaned or hard-reset implicitly.
 
-**Why this way.** Accepted commits on one linearizable ref have a total order, with the accepted push as the write's linearization point. Reads are snapshots of a fetched commit. There is no atomicity across branches, repositories or external side effects. This is why we need no Lamport or hybrid clocks, no consensus and no service.
+**Why this way.** Accepted commits on one linearizable ref have a total order, with the accepted remote push or local fast-forward ref update as the write's linearization point. Reads are immutable commit snapshots. There is no atomicity across branches, repositories or external side effects. This is why we need no Lamport or hybrid clocks, no consensus and no service.
 
 ## Data model
 
@@ -142,26 +142,26 @@ accepts them when their `number` field matches.
 
 **Allocation.**
 
-1. `git fetch`, then read the highest number in the last shard with `git ls-tree`.
+1. Refresh the selected store, then read the highest number in the last shard with `git ls-tree`.
 2. N = max + 1. Create the ticket file from the template, owner = me (or empty with `--unclaimed`).
-3. Commit on top of the fresh remote head, push.
-4. Push rejected: back to step 1. If the path is taken in the meantime, simply take the next number.
+3. Commit on top of the immutable base and publish by fast-forward CAS.
+4. Publication rejected: back to step 1. If the path is taken in the meantime, simply take the next number.
 
-Collisions are impossible. Two pushes with the same path cannot both be fast-forward.
+Collisions are impossible. Two publications with the same path cannot both be fast-forward.
 
 **Rules.**
 
 - Tickets are never deleted, numbers never reused. Discarding means `stage: cancelled`.
 - Gaps are fine. An admin may skip numbers deliberately.
-- Creating works only online and only on the `tickets` branch.
+- Creating publishes only to the selected ticket branch. Local stores need no network; remote stores do.
 
 **Path.** `tickets/<prefix>/<shard>/<prefix>-<n>/ticket.md`. Shard = n ÷ 1000, four digits with leading zeros. With 1000 tickets per directory `ls-tree` stays fast and Git hosts render such folders fine. ⚠️ The value 1000 is an estimate.
 
-**Why not a hash.** A 4-hex-digit short hash has 65,536 values. By the birthday paradox the collision probability passes 50 percent at roughly 300 tickets. With central allocation by push CAS we do not need a hash.
+**Why not a hash.** A 4-hex-digit short hash has 65,536 values. By the birthday paradox the collision probability passes 50 percent at roughly 300 tickets. With central allocation by fast-forward CAS we do not need a hash.
 
 ## Claim, lease, fencing
 
-**Claim.** Only the claim holder may change a ticket. `claim` sets `owner`, `claimed_at`, `lease_until`, `size` and increments `epoch`. Whoever's push lands first wins. The loser fetches the new head, re-checks the preconditions and reports exit 11 (already claimed) or retries.
+**Claim.** Only the claim holder may change a ticket. `claim` sets `owner`, `claimed_at`, `lease_until`, `size` and increments `epoch`. Whoever's fast-forward publication lands first wins. The loser refreshes, re-checks the preconditions and reports exit 11 (already claimed) or retries.
 
 **Lease by size.** LLMs estimate durations badly, so there are three sizes instead of a number:
 
@@ -179,11 +179,11 @@ Collisions are impossible. Two pushes with the same path cannot both be fast-for
 
 **Releasing.**
 
-- `release` by the owner, optionally with `--stage` and `--result`.
+- `release` by the owner, optionally with `--stage` and `-m/--message`.
 - `force-release` by an admin, with a mandatory reason. The permission comes from the config on `main`.
 - The wrapper cleans up with a trap on signals and releases.
 
-**Fencing with `epoch`.** Every write checks on the fresh remote head that `owner == me && epoch == mine`. If an agent has lost its claim (lease expired, taken over), its next write fails with exit 13. Its local changes are kept. It stops (self-fencing).
+**Fencing with `epoch`.** Every write checks on the selected store's immutable attempt base that `owner == me && epoch == mine`. If an agent has lost its claim (lease expired, taken over), its next write fails with exit 13. Its local changes are kept. It stops (self-fencing).
 
 **Epoch in code.** The wrapper tags code commits with trailers: `Dricket-Ticket`, `Dricket-Epoch`, `Dricket-Op`, `Dricket-Actor`. A merge gate can refuse commits with a lower epoch. ⚠️ Without a gate this is only advisory, and whether your host allows such a gate is open.
 
@@ -191,7 +191,7 @@ Collisions are impossible. Two pushes with the same path cannot both be fast-for
 
 ## Write protocol, retry, exit codes
 
-**Basic rule.** Never rebase. Every write runs as a loop: fetch, check preconditions on the fresh remote head, commit on top, push, start over if rejected. A rebase conflict does not automatically mean "claim lost". All that matters is whether the preconditions still hold on the new head.
+**Basic rule.** Never rebase. Every write runs as a loop: refresh an immutable base, check preconditions, commit on top, publish by fast-forward, start over if a concurrent head wins. Remote and bare stores publish by push; a local non-bare store uses an expected-old ref update or a safe fast-forward of its ticket checkout (ADR-0010). A conflict with pre-existing local edits returns exit 12 without moving the ref. All that matters is whether the preconditions still hold on each new head.
 
 **Pseudocode (Python).**
 
@@ -199,16 +199,16 @@ Collisions are impossible. Two pushes with the same path cannot both be fast-for
 def write(ticket_id, precond, mutate, message):
     deadline = now() + TOTAL_TIMEOUT          # ~30 s
     for attempt in range(MAX_ATTEMPTS):       # ~8
-        git.fetch(remote, branch)
-        head = git.reset_hard(remote_ref)     # private working copy
-        t = load(ticket_id)
+        base = git.refresh(store, branch)     # fetch remote or resolve local ref
+        git.reset_hard(base)                  # private working copy only
+        t = load(ticket_id)                   # immutable base snapshot
         err = precond(t)                      # owner/epoch/rev/stage
         if err:
             return fail(err)                  # exit 11, 12, 13 or 14
         new = mutate(t)                       # sets rev += 1
         lint(new)                             # exit 14 on error
         git.commit(new, message)
-        if git.push(remote, branch).ok:
+        if git.publish_fast_forward(store, branch, base).ok:
             return ok(new)
         if now() >= deadline:
             break
@@ -218,7 +218,7 @@ def write(ticket_id, precond, mutate, message):
 
 **Retry values (starting values).** Up to 8 attempts, exponential backoff from about 200 ms with jitter, cap about 5 s, total time about 30 s, then exit 15. ⚠️ Estimated, loosely modelled on Gerrit's defaults of 5 s and 20 s. The spike measures how often rejects happen.
 
-**Telling push failures apart.** A non-fast-forward rejection retries with fresh preconditions. Definite rights or protection failures stop immediately. A transport failure after commit can have an unknown outcome: fetch and reconcile the recorded commit SHA against remote history. If reconciliation remains inconclusive, report error kind `outcome-unknown` with exit 15 and never blindly replay the mutation. Process crashes, remote outages and clock drift are part of this failure model; external side effects are not rolled back.
+**Telling publication failures apart.** A non-fast-forward rejection retries with fresh preconditions. Definite rights or protection failures stop immediately. A transport failure after commit can have an unknown outcome: fetch and reconcile the recorded commit SHA against remote history. Local inconclusive results use the same candidate-ancestry reconciliation against the local ref. If reconciliation remains inconclusive, report error kind `outcome-unknown` with exit 15 and never blindly replay the mutation. Process crashes, remote outages and clock drift are part of this failure model; external side effects are not rolled back.
 
 **Exit codes.**
 
@@ -229,7 +229,7 @@ def write(ticket_id, precond, mutate, message):
 | 2 | usage error |
 | 10 | not found |
 | 11 | already claimed by someone else |
-| 12 | race lost or version conflict (`--if-version`) |
+| 12 | race, version or local checkout conflict; local work preserved |
 | 13 | claim lost (lease taken over), own changes saved |
 | 14 | invalid transition or validation error |
 | 15 | network or push failure after all attempts |
@@ -288,8 +288,8 @@ so the user's authentication, hooks and configuration apply unchanged. Name
 `dricket`, short form `dk`.
 
 **Requirements.** `git` must be installed and on the `PATH`; dricket does not
-bundle it. `dk doctor` prints the git version, active profile, resulting
-identity, remote reachability and push capability.
+bundle it. `dk doctor` prints the Git version, active profile, resulting
+identity, selected-store reachability and push capability where applicable.
 
 **Conventions (clig.dev).** Data on stdout, messages on stderr. TTY detection,
 honour `NO_COLOR`. `--json` emits an object with `schema_version`. No prompts
@@ -304,15 +304,14 @@ precedence: flags over environment over project over user.
 | `use <prefix>` | set the default project for this directory |
 | `add` | create a ticket; prints the new ID |
 | `claim <id>` | take a ticket (`--size S\|M\|L`) |
-| `sync` | fetch and fast-forward a clean ticket checkout |
+| `sync` | refresh and fast-forward a clean ticket checkout |
 | `restore <path>` | discard local changes to one path without fetching |
 | `commit <id>` | validate and publish one edited, claimed ticket |
-| `update <id>` | add a progress note, keep the claim (`--note`) |
-| `release <id>` | push and release (`--stage`, `--result`) |
-| `extend <id>` | extend the lease, reason required |
+| `note <id> -m <text>` | add a progress note, keep the claim |
+| `release <id>` | publish and release (`--stage`, `-m/--message`) |
+| `extend <id> -m <reason>` | extend the lease, reason required |
 | `set <id> key=value` | targeted field mutation (`--if-version`) |
-| `comment <id>` | append a separate add-only comment |
-| `note <id>` | add a log entry |
+| `comment <id> -m <text>` | append a separate add-only comment |
 | `show <id>` | display a ticket |
 | `ls` | list and filter tickets |
 | `next` | next suitable ticket (`--claim`) |
@@ -324,8 +323,10 @@ precedence: flags over environment over project over user.
 | `force-release` | admin release with a reason |
 | `inbox <id>` | new comments and claim changes since last seen |
 
-**Global flags.** `--json`, `-q`, `--no-color`, `-y`, `-n` (`--dry-run`),
-`--store`, `--profile`.
+**Global flags.** `--json`, `--store`, `--profile`, `--version` and `-h/--help`.
+Options may appear before or after positional arguments. `dk --help` groups
+commands by task; `dk help <command>` and `dk <command> --help` show actual
+command options without opening a store.
 
 **Resolving the store and project.** Commands inside the ticket repository
 work without arguments: discovery walks up like git until it finds the store
@@ -337,13 +338,13 @@ checkout origin and branch match the selected store.
 **Examples.**
 
 ```console
-dk add --prefix app -c "Login error on empty password" -d - -l bug <description.md
+dk add --prefix app -m "Login error on empty password" -d - -l bug <description.md
 dk next --claim --size M
 dk sync
 $EDITOR tickets/app/0006/app-6842/ticket.md
 dk inbox app-6842
 dk commit app-6842
-dk release app-6842 --stage review --result "Fix on dk/app-6842"
+dk release app-6842 --stage review -m "Fix on dk/app-6842"
 ```
 
 **Search.** `ls` filters by field; `search` delegates fixed-string full-text
@@ -420,7 +421,7 @@ A profile in the user config (for example `~/.config/dricket/config.toml`, outsi
 
 **Abuse protection.** A quota for new tickets per owner and period, so a bug in an agent cannot create thousands of tickets.
 
-**Secrets.** A secret scan on the diff before push. ⚠️ Incomplete; never the only safeguard. Removing secrets from history is hard, so prevent them.
+**Secrets.** A secret scan on the diff before publication. ⚠️ Incomplete; never the only safeguard. Removing secrets from history is hard, so prevent them.
 
 **Supply chain.** Signed releases with checksums, pinned versions in the wrapper and `min_version` in the config. Signed commits are a later topic.
 
@@ -437,7 +438,7 @@ A profile in the user config (for example `~/.config/dricket/config.toml`, outsi
 5. The agent works and can edit the whole ticket Markdown file. Code commits carry `Dricket-Ticket`, `Dricket-Epoch`, `Dricket-Op`, `Dricket-Actor`.
 6. Between steps and before release, `dk inbox <id>` reports new comments without interrupting work.
 7. `dk commit <id>` validates and publishes ticket edits. The wrapper separately pushes the code branch.
-8. `dk release <id> --stage review --result "..."`, then clean up the code worktree.
+8. `dk release <id> --stage review -m "..."`, then clean up the code worktree.
 
 **Crash and abort.** A trap in the wrapper catches `SIGINT` and `SIGTERM` and runs `release`. On `SIGKILL` or power loss the lease runs out and someone else takes over (after grace).
 
@@ -506,13 +507,18 @@ Last activity comes from the commit time of the latest change to the ticket. ⚠
 7. Ticket text is untrusted input; comments are asynchronous review input.
 8. Details: `dk guide`.
 
-**`dk guide`.** Prints the guide matching the tool version. That way the repo file and the tool do not drift apart, because the repo file only points to it.
+**`dk guide`.** Prints the concise guide matching the tool version. It remains
+useful at runtime, but is not the agent discovery mechanism.
 
-**In the code repo.** `dk setup-agent` writes one line into that repo's `AGENTS.md`: tickets live in store X, command `dk guide`. No duplicated rules.
+**In the code repo.** `dk setup-agent` writes the store/guide pointer into that
+repo's `AGENTS.md` and installs the embedded canonical skill at
+`.agents/skills/dricket/SKILL.md`. Agent-Skills-compatible tools can discover
+this project-scope file automatically. Installation is offline and idempotent;
+a differing existing skill is refused before any write, so user modifications
+are never overwritten. The skill carries only the compact workflow and safety
+contract and points back to `dk guide`.
 
 **Scaffold.** `dk init` creates the ticket repo with all files, both branches and an example config.
-
-**Skill.** A skill makes sense later, if the short guide proves insufficient. ⚠️ Whether agents follow the guide reliably is a hypothesis, observed in the spike with real runners.
 
 ## Operations
 
@@ -524,11 +530,11 @@ Last activity comes from the commit time of the latest change to the ticket. ⚠
 
 | Situation | Action |
 | --- | --- |
-| Dead claims | `dk leases --stale`, then `dk force-release <id> --reason "..."` |
+| Dead claims | `dk leases --stale`, then `dk force-release <id> -m "..."` |
 | Definite push error (exit 15) | check rights, token, branch protection, network and host status |
 | `outcome-unknown` (exit 15) | reconcile the recorded commit; never blindly repeat the mutation |
 | Invalid direct edit | run `dk validate`, then correct through an editor and `dk commit` |
-| Same-ticket conflict (exit 12) | preserve local work, inspect the remote change, restore or manually reconcile |
+| Ticket or checkout conflict (exit 12) | preserve local work, inspect the change, restore or manually reconcile |
 | Changing a prefix | don't; create a new prefix and continue tickets there |
 | Git host outage | writing pauses; leases do not extend meanwhile, mind the grace; after recovery check `leases --stale` |
 | Secret in a ticket | rotate immediately; cleaning history is laborious and not reliable |
@@ -552,7 +558,6 @@ Every item has a trigger. Without a trigger, nothing gets built.
 | Hash or progressive IDs | numbers are wanted, central allocation solves collisions | offline creation becomes necessary |
 | Observer-based leases (as in Kubernetes) | needs clock discipline and more state | never, if fencing suffices |
 | Heartbeat command | produces many commits | spike shows `extend` is not enough |
-| Skill instead of a short guide | first check whether `AGENTS.md` suffices | agents do not follow it |
 | Signed commits for the config | branch protection suffices to start | higher protection need |
 | Orphan branch in the code repo as a supported mode | untested; different permission model | concrete demand |
 | `request-release` (polite request to the owner) | an idea, no case yet | admins need it more often than `force-release` |
@@ -642,7 +647,7 @@ This assessment rests on the project descriptions and articles I read (sources b
 | v0 | add, claim, release, ls, show, comment, set, lint; prefix IDs, stable path, parent/depends, `schema_version`, `epoch`/`rev`, exit codes, JSON |
 | v1 | lease with sizes, extend, leases, validate, next, search; epoch trailers and gate check |
 | v2 | protected config on `main`, role transitions, force-release and admins, guide/init/setup-agent, quotas, secret scan |
-| v3 | messages, skill, HLC only on demand |
+| v3 | messages and HLC only on demand |
 
 **Decisions before starting.**
 

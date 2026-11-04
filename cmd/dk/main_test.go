@@ -94,7 +94,7 @@ func TestHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code = %d", code)
 	}
-	if !strings.Contains(out, "Usage:") || !strings.Contains(out, "Commands:") {
+	if !strings.Contains(out, "Usage:") || !strings.Contains(out, "Setup:") {
 		t.Errorf("out = %q", out)
 	}
 }
@@ -103,15 +103,5 @@ func TestStoreFlagRequiresValue(t *testing.T) {
 	code, _, errMsg := runForTest(t, "--store")
 	if code != exitUsage || !strings.Contains(errMsg, "requires a value") {
 		t.Fatalf("code = %d, stderr = %q", code, errMsg)
-	}
-}
-
-func TestQuietStillReportsErrors(t *testing.T) {
-	code, _, errMsg := runForTest(t, "-q", "frobnicate")
-	if code != exitUsage {
-		t.Fatalf("code = %d", code)
-	}
-	if !strings.Contains(errMsg, "unknown command") {
-		t.Errorf("stderr = %q", errMsg)
 	}
 }

@@ -15,12 +15,13 @@ stage v1".
 ## Decision
 
 **Store discovery walks up like git.** From the working directory, the
-tool climbs to the volume root looking for a *store root*: a git working
-tree whose checkout contains `dricket.toml`. There, remote is the origin
-URL when the repository has one and the directory itself when it does
-not (the local stores `dk init` creates are used in place and survive
-being moved); the branch comes from the new `branch` key in
-`dricket.toml` (default `tickets`, written by `dk init`).
+tool climbs to the actual Git working-tree root. ADR-0010 amends the config
+lookup: committed `main:dricket.toml` is authoritative, with the current
+checkout file only as fallback when main has no config. Discovery therefore
+works from the ticket branch too. Remote is the origin URL when the repository
+has one and the directory itself when it does not (the local stores `dk init`
+creates are used in place and survive being moved); the branch comes from the
+new `branch` key in `dricket.toml` (default `tickets`, written by `dk init`).
 
 **Bindings for code repositories.** A `.dricket` file written by
 `dk use` carries `store = "<remote>#<branch>"` and/or

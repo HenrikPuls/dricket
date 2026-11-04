@@ -14,8 +14,8 @@ import (
 	"time"
 )
 
-// Head is read access to the fresh remote head, given to preconditions.
-// It sees the state after the latest fetch, never a stale local branch.
+// Head is read access to the immutable attempt base, given to preconditions.
+// It sees the state after the latest refresh, never a moving public branch.
 type Head interface {
 	// Has reports whether a path exists on the head.
 	Has(path string) (bool, error)
@@ -41,6 +41,9 @@ type WriteSpec struct {
 	Message string
 	Check   func(Head) error
 	Mutate  func(Worktree) error
+	// PreserveWorktree publishes locally without updating the user checkout;
+	// the whole-ticket commit adopts it through its guarded workspace flow.
+	PreserveWorktree bool
 }
 
 // Outcome says how a write ended.
@@ -63,6 +66,8 @@ const (
 	// PushUnknown means a transport failure left acceptance unknown and
 	// reconciliation could not prove whether the commit landed.
 	PushUnknown
+	// CheckoutConflict means local user changes prevent a safe fast-forward.
+	CheckoutConflict
 )
 
 func (o Outcome) String() string {
@@ -79,6 +84,8 @@ func (o Outcome) String() string {
 		return "timeout"
 	case PushUnknown:
 		return "push outcome unknown"
+	case CheckoutConflict:
+		return "checkout conflict"
 	}
 	return "unknown"
 }
@@ -106,10 +113,10 @@ func (e *WriteError) Error() string {
 
 func (e *WriteError) Unwrap() error { return e.Err }
 
-// Write runs the protocol of docs/CONCEPT.md: fetch, check preconditions
-// on the fresh head, mutate, commit, push; on a rejected push back off and
-// start over from a fresh fetch. Never rebase. A nil return means the push
-// was accepted; every other end is a *WriteError.
+// Write runs the protocol of docs/CONCEPT.md: refresh an immutable base, check
+// preconditions, mutate, commit and publish by remote push or local ref CAS.
+// A concurrent rejection retries from a fresh base. Never rebase. A nil return
+// means publication was accepted; every other end is a *WriteError.
 func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 	ctx, cancel := context.WithTimeout(ctx, s.opts.TotalTimeout)
 	defer cancel()
@@ -166,29 +173,58 @@ func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 			return werr
 		}
 		werr.Commit = commit
-		_, pushStderr, err := s.git(ctx, "push", "--quiet", "origin",
-			fmt.Sprintf("HEAD:refs/heads/%s", s.opts.branch()))
-		if err == nil {
+		var publishErr error
+		publishOutput := ""
+		retryable := false
+		if s.localDir != "" {
+			retryable, publishErr = s.publishLocal(ctx, commit, s.baseSHA, spec.PreserveWorktree)
+			if publishErr != nil {
+				publishOutput = publishErr.Error()
+			}
+		} else {
+			_, publishOutput, publishErr = s.git(ctx, "push", "--quiet", "origin",
+				fmt.Sprintf("HEAD:refs/heads/%s", s.opts.branch()))
+			retryable = retryablePush(publishOutput)
+		}
+		if publishErr == nil {
 			return nil // accepted
 		}
-		if !retryablePush(pushStderr) {
-			werr.Outcome = PushFailed
-			werr.PushStderr = pushStderr
-			if definitePushFailure(pushStderr) {
-				return werr
-			}
-			accepted, reconcileErr := s.reconcilePush(ctx, commit)
+		if errors.Is(publishErr, errCheckoutConflict) {
+			werr.Outcome = CheckoutConflict
+			werr.Err = publishErr
+			return werr
+		}
+		if s.localDir != "" {
+			accepted, reconcileErr := s.reconcileLocal(ctx, commit)
 			if accepted {
 				return nil
 			}
 			if reconcileErr != nil {
 				werr.Outcome = PushUnknown
-				werr.Err = fmt.Errorf("%s; reconciliation failed: %w", firstLine(pushStderr), reconcileErr)
+				werr.Err = fmt.Errorf("%s; reconciliation failed: %w", firstLine(publishOutput), reconcileErr)
+				return werr
+			}
+		}
+		if !retryable {
+			werr.Outcome = PushFailed
+			werr.PushStderr = publishOutput
+			if s.localDir == "" && definitePushFailure(publishOutput) {
+				return werr
+			}
+			if s.localDir == "" {
+				accepted, reconcileErr := s.reconcilePush(ctx, commit)
+				if accepted {
+					return nil
+				}
+				if reconcileErr != nil {
+					werr.Outcome = PushUnknown
+					werr.Err = fmt.Errorf("%s; reconciliation failed: %w", firstLine(publishOutput), reconcileErr)
+				}
 			}
 			return werr
 		}
-		// Rejected as non-fast-forward: back off, then start over from a
-		// fresh fetch and re-check the preconditions.
+		// A concurrent ref rejection retries from a fresh snapshot and
+		// re-checks every precondition.
 		if attempt == s.opts.MaxAttempts || ctx.Err() != nil {
 			werr.Outcome = Timeout
 			return werr

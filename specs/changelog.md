@@ -54,6 +54,26 @@ top-level CHANGELOG.md and are written at release time from this file.
 
 ## Shipped
 
+### R-16 Discoverable dricket agent skill (2026-11-04)
+Canonical `skills/dricket/SKILL.md`, embedded offline and installed by
+`dk setup-agent` at project scope with an AGENTS pointer, idempotent reruns
+and preflight refusal to overwrite a modified skill. Verified with baseline
+and green agents; Kimi Code discovers the installed project skill without
+writes. Released in v0.5.0.
+
+### R-15 Git-like CLI and structured help (2026-11-04)
+Options work before or after positional arguments; text and reason inputs
+use `-m/--message`; the redundant `update` command and the dead global flags
+are removed; root help is grouped by task and every command has
+store-independent help generated from its actual flag set. Released in v0.5.0.
+
+### R-14 Single-repository local operation (2026-11-04)
+ADR-0010: `dk init` checks out the ticket branch; discovery reads committed
+`main` config at the Git root; non-bare local stores publish through a
+private linked worktree with immutable base snapshots and expected-old ref
+CAS, with guarded adoption for whole-ticket commits; remote and bare stores
+keep push CAS. Released in v0.5.0.
+
 ### R-13 Collaborative-editing documentation (2026-11-03)
 README workflow and trust model, static landing page workflow, guardrails and
 status, and user-facing release notes for v0.4.0. Documentation checks pass.

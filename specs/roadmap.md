@@ -7,7 +7,7 @@ the items below; milestone numbers are not used.
 
 ## Now
 
-Nothing.
+Nothing committed. Pick the next item only when its trigger fires (below).
 
 ## Later
 Each has a trigger; without it nothing is built. See "Deliberately deferred" in docs/CONCEPT.md.
