@@ -109,7 +109,10 @@ func (s *Service) ForceRelease(ctx context.Context, id, reason string, stage tic
 			"force-release: owner %s is not in security.admins of dricket.toml (exit 17)", s.Owner)
 	}
 	if stage == "" {
-		stage = ticket.StageOpen
+		stage = cfg.Stages.Initial
+	}
+	if !cfg.Stages.Valid(stage) {
+		return ForceReleaseResult{}, errf(KindInvalid, "stage %q is not one of %s", string(stage), cfg.Stages.Names())
 	}
 
 	var out ForceReleaseResult
@@ -142,7 +145,7 @@ func (s *Service) ForceRelease(ctx context.Context, id, reason string, stage tic
 			tk.Stage = stage
 			tk.Rev++
 			appendLog(&tk, s.Owner, "force-release "+id+" by "+s.Owner+": "+firstLine(reason), now)
-			if err := checkLint(tk, id); err != nil {
+			if err := s.checkLint(tk, id); err != nil {
 				return err
 			}
 			return w.WriteFile(path, tk.ToDoc().Render())

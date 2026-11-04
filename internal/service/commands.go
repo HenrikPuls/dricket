@@ -29,6 +29,8 @@ type AddRequest struct {
 	Size        ticket.Size
 	Kind        ticket.Kind
 	Priority    string
+	// Extensions are x-<name> fields set on creation (`add --set`).
+	Extensions []FieldValue
 }
 
 // Add creates a ticket with an id allocated by push retry: the number is
@@ -45,7 +47,19 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (string, error) {
 	}
 	// Content checks run before any git access: the secret scan first,
 	// so a leaked credential is reported even when the quota is spent.
-	if err := s.scanSecrets(ctx, req.Title, req.Description); err != nil {
+	scanned := []string{req.Title, req.Description}
+	for i, e := range req.Extensions {
+		if cls, _ := ticket.ClassOf(e.Key); cls != ticket.Extension {
+			return "", errf(KindInvalid, "add --set accepts only extension fields (x-<name>), got %q", e.Key)
+		}
+		v := strings.TrimSpace(e.Value)
+		if err := ticket.CheckExtensionValue(e.Key, v); err != nil {
+			return "", errf(KindInvalid, "%v", err)
+		}
+		req.Extensions[i].Value = v
+		scanned = append(scanned, v)
+	}
+	if err := s.scanSecrets(ctx, scanned...); err != nil {
 		return "", err
 	}
 	if err := s.checkQuota(ctx); err != nil {
@@ -100,7 +114,7 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (string, error) {
 				CreatedBy:     s.Owner,
 				SchemaVersion: ticket.SchemaVersion,
 				Title:         req.Title,
-				Stage:         ticket.StageOpen,
+				Stage:         cfg.Stages.Initial,
 				Kind:          req.Kind,
 				Size:          req.Size,
 				Priority:      priority,
@@ -111,18 +125,21 @@ func (s *Service) Add(ctx context.Context, req AddRequest) (string, error) {
 				Parent:        strings.ToLower(req.Parent),
 				Body:          bodyFor(req.Description),
 			}
+			for _, e := range req.Extensions {
+				tk.SetExtension(e.Key, e.Value)
+			}
 			if !req.Unclaimed {
 				tk.Owner = s.Owner
 				tk.ClaimedAt = now
 				tk.LeaseUntil = now.Add(lease)
 				tk.Epoch = 1
 				tk.Rev = 1
-				tk.Stage = ticket.StageInProgress
+				tk.Stage = cfg.Stages.Claim[0]
 				appendLog(&tk, s.Owner, "add-claim "+id, now)
 			} else {
 				appendLog(&tk, s.Owner, "add "+id, now)
 			}
-			if err := checkLint(tk, id); err != nil {
+			if err := s.checkLint(tk, id); err != nil {
 				return err
 			}
 			return nil
@@ -186,7 +203,7 @@ func (s *Service) Claim(ctx context.Context, id string, size ticket.Size, kind t
 			if err != nil {
 				return err
 			}
-			if err := checkLint(tk, id); err != nil {
+			if err := s.checkLint(tk, id); err != nil {
 				return err
 			}
 			now := s.Now()
@@ -206,9 +223,9 @@ func (s *Service) Claim(ctx context.Context, id string, size ticket.Size, kind t
 				}
 				result.Takeover = true
 			}
-			if !ticket.CanTransitionTable(cfg.Transitions, roleOf(kind), tk.Stage, ticket.StageInProgress) && tk.Stage != ticket.StageInProgress {
+			if !cfg.Stages.InClaim(tk.Stage) && !ticket.CanTransitionIn(cfg.Stages, cfg.Transitions, roleOf(kind), tk.Stage, cfg.Stages.Claim[0]) {
 				return errf(KindInvalid, "%s may not move %s from %s to %s",
-					roleOf(kind), id, tk.Stage, ticket.StageInProgress)
+					roleOf(kind), id, tk.Stage, cfg.Stages.Claim[0])
 			}
 			result.Epoch = tk.Epoch + 1
 			return nil
@@ -235,9 +252,7 @@ func (s *Service) Claim(ctx context.Context, id string, size ticket.Size, kind t
 			tk.Epoch = result.Epoch
 			tk.Rev++
 			tk.Extensions = 0
-			if tk.Stage == ticket.StageOpen || result.Takeover {
-				tk.Stage = ticket.StageInProgress
-			}
+			tk.Stage = cfg.Stages.AfterClaim(tk.Stage, result.Takeover)
 			event := "claim " + id
 			if result.Takeover {
 				event = "takeover " + id + " (lease expired)"
@@ -245,7 +260,7 @@ func (s *Service) Claim(ctx context.Context, id string, size ticket.Size, kind t
 			appendLog(&tk, s.Owner, event, now)
 			result.ID = id
 			result.LeaseUntil = stamp(tk.LeaseUntil)
-			if err := checkLint(tk, id); err != nil {
+			if err := s.checkLint(tk, id); err != nil {
 				return err
 			}
 			return w.WriteFile(path, tk.ToDoc().Render())
@@ -278,9 +293,6 @@ func (s *Service) Release(ctx context.Context, id string, stage ticket.Stage, re
 	if err != nil {
 		return ReleaseResult{}, err
 	}
-	if stage == "" {
-		stage = ticket.StageReview
-	}
 	result = sanitize(strings.TrimSpace(result), MaxBody)
 	if err := s.scanSecrets(ctx, result); err != nil {
 		return ReleaseResult{}, err
@@ -288,6 +300,15 @@ func (s *Service) Release(ctx context.Context, id string, stage ticket.Stage, re
 	cfg, cerr := s.config(ctx)
 	if cerr != nil {
 		return ReleaseResult{}, cerr
+	}
+	if stage == "" {
+		if !cfg.Stages.Legacy {
+			return ReleaseResult{}, errf(KindInvalid, "release needs --stage with a configured vocabulary (one of %s)", cfg.Stages.Names())
+		}
+		stage = ticket.StageReview
+	}
+	if !cfg.Stages.Valid(stage) {
+		return ReleaseResult{}, errf(KindInvalid, "stage %q is not one of %s", string(stage), cfg.Stages.Names())
 	}
 
 	var out ReleaseResult
@@ -309,7 +330,7 @@ func (s *Service) Release(ctx context.Context, id string, stage ticket.Stage, re
 			// The role comes from the kind of the claim (concept: the
 			// role comes from `kind`); before stage v2 this check
 			// wrongly used the agent role for every release.
-			if !ticket.CanTransitionTable(cfg.Transitions, roleOf(tk.Kind), tk.Stage, stage) {
+			if !ticket.CanTransitionIn(cfg.Stages, cfg.Transitions, roleOf(tk.Kind), tk.Stage, stage) {
 				return errf(KindInvalid, "%s may not release %s from %s to %s",
 					roleOf(tk.Kind), id, tk.Stage, stage)
 			}
@@ -343,7 +364,7 @@ func (s *Service) Release(ctx context.Context, id string, stage ticket.Stage, re
 			if result != "" {
 				tk.Body = setResult(tk.Body, result)
 			}
-			if err := checkLint(tk, id); err != nil {
+			if err := s.checkLint(tk, id); err != nil {
 				return err
 			}
 			out = ReleaseResult{ID: id, Stage: string(stage)}
@@ -458,120 +479,6 @@ func commentFileName(t time.Time, author string) string {
 
 // ------------------------------------------------------------- set ----
 
-// SetResult reports a changed free field.
-type SetResult struct {
-	ID    string `json:"id"`
-	Key   string `json:"key"`
-	Value string `json:"value"`
-	Rev   int    `json:"rev"`
-}
-
-// Set changes one free field. State and identity fields are rejected: they
-// change only through commands. IfVersion guards against races (exit 12).
-func (s *Service) Set(ctx context.Context, id, key, value string, ifVersion int) (SetResult, error) {
-	id = strings.ToLower(strings.TrimSpace(id))
-	path, err := PathFor(id)
-	if err != nil {
-		return SetResult{}, err
-	}
-	// The field classes live in the ticket model; state and identity
-	// fields change only through commands.
-	cls, known := ticket.ClassOf(key)
-	if !known {
-		return SetResult{}, errf(KindInvalid, "unknown field %q", key)
-	}
-	if cls != ticket.Free {
-		return SetResult{}, errf(KindInvalid, "%s is not a free field; it changes only through a command", key)
-	}
-	value = sanitize(strings.TrimSpace(value), MaxBody)
-	if key == "priority" {
-		// The allowed values come from dricket.toml.
-		cfg, cerr := s.config(ctx)
-		if cerr != nil {
-			return SetResult{}, cerr
-		}
-		if err := cfg.CheckPriority(strings.ToLower(value)); err != nil {
-			return SetResult{}, errf(KindInvalid, "%v", err)
-		}
-		value = strings.ToLower(value)
-	}
-	if err := s.scanSecrets(ctx, value); err != nil {
-		return SetResult{}, err
-	}
-
-	var out SetResult
-	spec := store.WriteSpec{
-		Message: "dricket: set " + key + " on " + id,
-		Check: func(h store.Head) error {
-			tk, _, err := loadTicket(h, path)
-			if err != nil {
-				return err
-			}
-			if ifVersion > 0 && tk.Rev != ifVersion {
-				return errf(KindConflict, "ticket %s is at rev %d, expected %d", id, tk.Rev, ifVersion)
-			}
-			if tk.Owner != "" && tk.Owner != s.Owner {
-				return errf(KindClaimed, "ticket %s is claimed by %s", id, tk.Owner)
-			}
-			out = SetResult{ID: id, Key: key, Rev: tk.Rev + 1}
-			return nil
-		},
-		Mutate: func(w store.Worktree) error {
-			content, err := w.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			doc, err := frontmatter.Parse(content)
-			if err != nil {
-				return err
-			}
-			tk, _, err := ticket.FromDoc(doc)
-			if err != nil {
-				return err
-			}
-			switch key {
-			case "title":
-				if value == "" {
-					return errf(KindInvalid, "title must not be empty")
-				}
-				tk.Title = value
-			case "parent":
-				tk.Parent = strings.ToLower(value)
-			case "branch":
-				tk.Branch = value
-			case "priority":
-				tk.Priority = value
-			case "labels", "depends", "touches", "repos":
-				var list []string
-				for _, p := range strings.Split(value, ",") {
-					if p = strings.TrimSpace(p); p != "" {
-						list = append(list, p)
-					}
-				}
-				if key == "depends" {
-					for _, d := range list {
-						if !ticket.ValidID(d) {
-							return errf(KindInvalid, "%q is not a ticket id", d)
-						}
-					}
-				}
-				setList(&tk, key, list)
-			}
-			tk.Rev++
-			appendLog(&tk, s.Owner, "set "+key, s.Now())
-			if err := checkLint(tk, id); err != nil {
-				return err
-			}
-			out.Value = fieldValue(tk, key)
-			return w.WriteFile(path, tk.ToDoc().Render())
-		},
-	}
-	if err := s.Store.Write(ctx, spec); err != nil {
-		return SetResult{}, err
-	}
-	return out, nil
-}
-
 func setList(tk *ticket.Ticket, key string, list []string) {
 	switch key {
 	case "labels":
@@ -601,6 +508,11 @@ func fieldValue(tk ticket.Ticket, key string) string {
 		return strings.Join(tk.Touches, ", ")
 	case "repos":
 		return strings.Join(tk.Repos, ", ")
+	case "priority":
+		return tk.Priority
+	}
+	if v, ok := tk.Extension(key); ok {
+		return v
 	}
 	return ""
 }

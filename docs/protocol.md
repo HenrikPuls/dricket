@@ -64,10 +64,11 @@ Field rules are structural, not per-field authorization:
 | immutable identity | `id`, `created_at`, `created_by`, `schema_version`; `id` equals the path |
 | claim and lease invariants | `owner`, `kind`, `size`, `claimed_at`, `lease_until`, `epoch`, `rev`, `extensions` |
 | editable content and workflow | `stage`, `title`, `labels`, `depends`, `parent`, `touches`, `branch`, `repos`, `priority`, and the body |
+| extension fields | `x-<name>` (`^x-[a-z0-9][a-z0-9-]*$`): single line, at most 1 000 bytes, secret-scanned, never interpreted, preserved in order on every write (ADR-0011) |
 
 Timestamps are RFC 3339 in UTC. Empty values are written as `key:` with
 nothing after the colon (an unclaimed ticket has an empty `owner`).
-Unknown keys are warnings, never errors: newer tools must not break older
+Extension fields are the supported place for consumer metadata; other unknown keys are warnings, never errors: newer tools must not break older
 repos, and tool writes preserve unknown fields.
 
 The body carries three fixed headings: *Description*, *Result* and *Log*.
@@ -154,6 +155,42 @@ The normal workflow is `claim`, `sync`, an ordinary editor, and `commit`:
   the same ticket is exit 12. Comments and unrelated tickets can advance
   without causing that conflict.
 
+## Writes without a checkout
+
+`set`, `put` and `move` write a ticket without `claim`, `sync` and an exact
+edit base (ADR-0011). Each is one commit with `rev` + 1, retried from a fresh
+base like every write.
+
+- `set <id> key=value...` changes free fields and `x-` fields. Several pairs
+  are one commit. An empty `x-` value removes the key. A ticket claimed by
+  someone else is refused (exit 11).
+- `put <id> (-F <file> | -)` replaces the whole ticket. Identity and claim
+  fields (`owner`, `kind`, `size`, `claimed_at`, `lease_until`, `epoch`,
+  `extensions`) must equal the current ticket, `rev` in the document is
+  ignored, CRLF is normalised to LF, the secret scan and the size limit
+  (body 100 000 bytes) apply and the whole transition is linted. A document
+  equal to the current ticket is a no-op without a commit.
+- `move <id> --stage <s> [-m note]` changes the stage and appends one log line.
+  Moving to the current stage is a no-op.
+
+Who may call `put` and `move`: the claim holder; on an unclaimed ticket a
+caller that declares `--kind human` or is listed in `security.admins` (an
+agent gets exit 17); on a ticket claimed by someone else nobody (exit 11),
+except an admin with `--force` (exit 17 without admin). A forced `put` keeps
+the claim fields (the claimant's next exact-base `commit` fails with exit 12);
+a forced `move` clears the claim, like `force-release`, and keeps the epoch.
+`--if-version N` compares `rev` (exit 12 on mismatch); it is required unless
+the caller holds the claim. `0` is a valid version.
+
+### Command results (`--json`, inside the `data` envelope)
+
+| Command | `data` |
+|---|---|
+| `set` with one pair | `{"id","key","value","rev","fields":{key:value}}` |
+| `set` with several pairs | `{"id","rev","fields":{key:value,...}}` |
+| `put` | `{"id","rev","commit","changed_fields":["x-persona","body"]}`; `commit` is the head after the write, `changed_fields` lists header keys (`rev` excluded) in canonical order, then `"body"`; `[]` for a no-op |
+| `move` | `{"id","stage","from","rev"}` |
+
 ## Id allocation
 
 `add` computes N = highest existing number of the prefix + 1 on the fresh
@@ -193,6 +230,13 @@ secret_scan = true        # refuse likely credentials before they land
 values = ["critical", "high", "normal", "low"]   # allowed values of the
 default = "normal"        # free field `priority`; fills `add` without --priority
 
+[stages]                  # optional; replaces the built-in seven stages
+values = ["inbox", "prioritized", "build", "commit", "done"]   # ordered, required
+initial = "inbox"         # stage of a new ticket (default: first value)
+terminal = ["done"]       # satisfy `depends`; `next` skips them
+claim = ["build", "commit"]   # a claim is only valid here (required)
+cancelled = "cancelled"   # optional reserved stage, always valid, terminal
+
 [transitions.agent]       # legacy command policy; not an integrity rule
 open = ["in-progress", "blocked", "needs-input"]
 in-progress = ["review", "blocked", "needs-input", "open"]
@@ -211,6 +255,16 @@ normal) applies without a `[priorities]` table (ADR-0005). The lease is
 the size value raised to `lease_min` and capped at `lease_max`; a claim
 made before a tightening keeps its old lease until the next claim or
 extend, and `validate` then reports `lease-too-long`.
+
+Without `[stages]` the stages are `open, in-progress, review, done, blocked,
+needs-input, cancelled` and `in-progress` means claimed. With it, a stage name
+is a lower-case word of letters, digits and inner dashes, every stage must be
+listed in `values` (except `cancelled`), a claim moves a ticket into the first
+`claim` stage when it is elsewhere, an unclaimed ticket may sit in a claim
+stage (that is what `next` offers), `release` needs `--stage`, and the default
+agent table lets an agent move between non-terminal stages only. `validate`
+checks the current snapshot against the list but not the stage names inside
+replayed history (ADR-0011).
 
 `grace` is deliberately not configurable: it is part of the fencing
 model and changes only with an ADR. See ADR-0004 for the decisions

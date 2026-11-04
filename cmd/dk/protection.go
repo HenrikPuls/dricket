@@ -17,7 +17,7 @@ func newForceReleaseFlagSet() *flag.FlagSet {
 	var message string
 	fs.StringVar(&message, "m", "", "why the claim is force-released (required)")
 	fs.StringVar(&message, "message", "", "why the claim is force-released (required)")
-	fs.String("stage", "open", "target stage after the release (default open)")
+	fs.String("stage", "", "target stage after the release (default: the initial stage, open with the built-in stages)")
 	return fs
 }
 

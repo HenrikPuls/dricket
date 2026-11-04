@@ -167,3 +167,97 @@ func TestCLIHelpListsCommands(t *testing.T) {
 		}
 	}
 }
+
+func dataOf(t *testing.T, out string) map[string]any {
+	t.Helper()
+	var env struct {
+		SchemaVersion int            `json:"schema_version"`
+		Data          map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil || env.SchemaVersion != 1 {
+		t.Fatalf("not an envelope: %q (%v)", out, err)
+	}
+	return env.Data
+}
+
+func TestCLIExtensionFieldsPutAndMove(t *testing.T) {
+	setupBareCLI(t)
+
+	code, out, errMsg := runForTest(t, "--json", "add", "--prefix", "app", "-m", "Drey ticket", "--unclaimed",
+		"--set", "x-persona=ben", "--set", "x-rank=10")
+	if code != 0 {
+		t.Fatalf("add = %d, %q, %q", code, out, errMsg)
+	}
+
+	// Several pairs, one commit: the multi-pair shape is {id, rev, fields}.
+	code, out, errMsg = runForTest(t, "--json", "set", "app-1", "x-persona=paul", "x-rank=", "x-chain=a,b", "--if-version", "0")
+	if code != 0 {
+		t.Fatalf("set = %d, %q, %q", code, out, errMsg)
+	}
+	data := dataOf(t, out)
+	fields, _ := data["fields"].(map[string]any)
+	if data["rev"] != float64(1) || data["key"] != nil || fields["x-persona"] != "paul" || fields["x-rank"] != "" || fields["x-chain"] != "a,b" {
+		t.Fatalf("set json = %v", data)
+	}
+	code, out, _ = runForTest(t, "show", "app-1")
+	if code != 0 || !strings.Contains(out, "x-persona: paul") || !strings.Contains(out, "x-chain: a,b") || strings.Contains(out, "x-rank:") {
+		t.Fatalf("show = %d, %q", code, out)
+	}
+
+	// A bad extension key is a usage-level validation error (exit 14).
+	if code, _, _ = runForTest(t, "set", "app-1", "x-Bad=1"); code != 14 {
+		t.Errorf("bad key exit = %d, want 14", code)
+	}
+	if code, _, _ = runForTest(t, "set", "app-1", "novalue"); code != 2 {
+		t.Errorf("missing '=' exit = %d, want 2", code)
+	}
+
+	// put from a file: needs the human kind and a version on an unclaimed
+	// ticket, and answers {id, rev, commit, changed_fields}.
+	file := filepath.Join(t.TempDir(), "ticket.md")
+	_, shown, _ := runForTest(t, "--json", "show", "app-1")
+	content, _ := dataOf(t, shown)["content"].(string)
+	if err := os.WriteFile(file, []byte(strings.Replace(content, "(no description)", "Written by put.", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, _ = runForTest(t, "put", "app-1", "-F", file, "--if-version", "1"); code != 17 {
+		t.Errorf("put as agent on an unclaimed ticket = %d, want 17", code)
+	}
+	if code, _, _ = runForTest(t, "put", "app-1", "-F", file, "--kind", "human"); code != 14 {
+		t.Errorf("put without --if-version = %d, want 14", code)
+	}
+	if code, _, _ = runForTest(t, "put", "app-1", "-F", file, "--kind", "human", "--if-version", "5"); code != 12 {
+		t.Errorf("put with a stale version = %d, want 12", code)
+	}
+	code, out, errMsg = runForTest(t, "--json", "put", "app-1", "-F", file, "--kind", "human", "--if-version", "1")
+	if code != 0 {
+		t.Fatalf("put = %d, %q, %q", code, out, errMsg)
+	}
+	data = dataOf(t, out)
+	if data["id"] != "app-1" || data["rev"] != float64(2) || data["commit"] == "" || data["commit"] == nil {
+		t.Fatalf("put json = %v", data)
+	}
+	if got, _ := data["changed_fields"].([]any); len(got) != 1 || got[0] != "body" {
+		t.Fatalf("changed_fields = %v", data["changed_fields"])
+	}
+
+	// move: {id, stage, from, rev}; same stage is a no-op at the same rev.
+	code, out, errMsg = runForTest(t, "--json", "move", "app-1", "--stage", "review", "--kind", "human", "-m", "looks good")
+	if code != 0 {
+		t.Fatalf("move = %d, %q, %q", code, out, errMsg)
+	}
+	data = dataOf(t, out)
+	if data["stage"] != "review" || data["from"] != "open" || data["rev"] != float64(3) {
+		t.Fatalf("move json = %v", data)
+	}
+	code, out, _ = runForTest(t, "--json", "move", "app-1", "--stage", "review", "--kind", "human")
+	if code != 0 || dataOf(t, out)["rev"] != float64(3) {
+		t.Fatalf("repeated move = %d, %q", code, out)
+	}
+	if code, _, _ = runForTest(t, "move", "app-1", "--stage", "nowhere", "--kind", "human"); code != 14 {
+		t.Errorf("unknown stage = %d, want 14", code)
+	}
+	if code, _, _ = runForTest(t, "move", "app-1"); code != 2 {
+		t.Errorf("move without --stage = %d, want 2", code)
+	}
+}

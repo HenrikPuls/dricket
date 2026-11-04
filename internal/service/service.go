@@ -264,9 +264,13 @@ func sanitize(s string, limit int) string {
 }
 
 // checkLint refuses a ticket that does not pass the lint level.
-func checkLint(tk ticket.Ticket, id string) error {
+func (s *Service) checkLint(tk ticket.Ticket, id string) error {
+	cfg, err := s.config(context.Background())
+	if err != nil {
+		return err
+	}
 	var errs []string
-	for _, f := range ticket.Lint(tk) {
+	for _, f := range ticket.LintWith(tk, cfg.Stages, true) {
 		if !f.Warning {
 			errs = append(errs, f.String())
 		}

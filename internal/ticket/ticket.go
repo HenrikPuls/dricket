@@ -19,15 +19,17 @@ import (
 // SchemaVersion is the on-disk format version this tool reads and writes.
 const SchemaVersion = 1
 
-// Class is one of the three field classes of the concept.
+// Class is one of the field classes of the concept (three from the concept
+// plus the extension namespace).
 type Class int
 
 // Field classes classify targeted mutations; whole-ticket edits still pass
 // through structural transition validation.
 const (
-	Identity Class = iota // immutable after creation
-	State                 // coordination state with transition invariants
-	Free                  // editable content or workflow metadata
+	Identity  Class = iota // immutable after creation
+	State                  // coordination state with transition invariants
+	Free                   // editable content or workflow metadata
+	Extension              // x-<name>: opaque consumer metadata, preserved on every write
 )
 
 func (c Class) String() string {
@@ -36,6 +38,8 @@ func (c Class) String() string {
 		return "identity"
 	case State:
 		return "state"
+	case Extension:
+		return "extension"
 	default:
 		return "free"
 	}
@@ -65,6 +69,8 @@ func ClassOf(field string) (Class, bool) {
 		return State, true
 	case freeFields[field]:
 		return Free, true
+	case ValidExtensionKey(field):
+		return Extension, true
 	}
 	return Free, false
 }
@@ -176,8 +182,11 @@ type Ticket struct {
 // values that do not fit their type.
 func FromDoc(doc frontmatter.Document) (t Ticket, unknown []string, err error) {
 	for _, f := range doc.Fields {
-		if _, known := ClassOf(f.Key); !known {
+		cls, known := ClassOf(f.Key)
+		if !known {
 			unknown = append(unknown, f.Key)
+		}
+		if !known || cls == Extension {
 			t.Extra = append(t.Extra, f)
 		}
 	}
@@ -320,7 +329,9 @@ func (t Ticket) ToDoc() frontmatter.Document {
 		{Key: "repos", Value: strings.Join(t.Repos, ", ")},
 	}
 	for _, field := range t.Extra {
-		if _, known := ClassOf(field.Key); !known {
+		// Only unknown keys and extensions live in Extra; a known key
+		// there would duplicate a typed field.
+		if cls, known := ClassOf(field.Key); !known || cls == Extension {
 			fields = append(fields, frontmatter.Field{Key: field.Key, Value: field.Value})
 		}
 	}
@@ -365,6 +376,14 @@ func (f Finding) String() string {
 // identity shape, required fields, enums and state consistency. Reference
 // checks (depends, parent exist) belong to validate and need the store.
 func Lint(t Ticket) []Finding {
+	return LintWith(t, DefaultStageSet(), true)
+}
+
+// LintWith is Lint under a store's stage vocabulary. checkVocab false skips
+// the vocabulary checks (membership, and for custom sets the claim-stage
+// rule); history replay uses it so that a later edit of [stages] does not
+// invalidate old commits.
+func LintWith(t Ticket, set StageSet, checkVocab bool) []Finding {
 	var fs []Finding
 	add := func(field, msg string) { fs = append(fs, Finding{Field: field, Message: msg}) }
 	owned := t.Owner != ""
@@ -388,8 +407,8 @@ func Lint(t Ticket) []Finding {
 	if t.Title == "" {
 		add("title", "required")
 	}
-	if !stages[t.Stage] {
-		add("stage", fmt.Sprintf("%q is not one of open, in-progress, review, done, blocked, needs-input, cancelled", string(t.Stage)))
+	if checkVocab && !set.Valid(t.Stage) {
+		add("stage", fmt.Sprintf("%q is not one of %s", string(t.Stage), set.Names()))
 	}
 	if !kinds[t.Kind] {
 		add("kind", fmt.Sprintf("%q is not one of agent, human", string(t.Kind)))
@@ -423,8 +442,19 @@ func Lint(t Ticket) []Finding {
 	if t.Rev < 0 {
 		add("rev", "must not be negative")
 	}
-	if t.Stage == StageInProgress && !owned {
-		add("stage", "in-progress while the ticket is not claimed")
+	if set.Legacy {
+		if t.Stage == StageInProgress && !owned {
+			add("stage", "in-progress while the ticket is not claimed")
+		}
+	} else if checkVocab && owned && !set.InClaim(t.Stage) {
+		add("stage", fmt.Sprintf("%q while the ticket is claimed; a claim is only valid in %s", string(t.Stage), joinStages(set.Claim)))
+	}
+	for _, f := range t.Extra {
+		if cls, _ := ClassOf(f.Key); cls == Extension {
+			if err := CheckExtensionValue(f.Key, f.Value); err != nil {
+				add(f.Key, err.Error())
+			}
+		}
 	}
 	for _, id := range append([]string{t.Parent}, t.Depends...) {
 		if id == "" {
@@ -437,7 +467,15 @@ func Lint(t Ticket) []Finding {
 	return fs
 }
 
-// ValidStage reports whether s is one of the known stages.
+func joinStages(list []Stage) string {
+	names := make([]string, len(list))
+	for i, v := range list {
+		names[i] = string(v)
+	}
+	return strings.Join(names, ", ")
+}
+
+// ValidStage reports whether s is one of the built-in stages.
 func ValidStage(s Stage) bool { return stages[s] }
 
 // ValidRole reports whether r is one of the known roles.
@@ -470,7 +508,12 @@ func DefaultTransitions() TransitionTable {
 // to another under the given table. Human and admin may always; a role or
 // stage missing from the table means the move is not allowed.
 func CanTransitionTable(table TransitionTable, role Role, from, to Stage) bool {
-	if !stages[from] || !stages[to] {
+	return CanTransitionIn(DefaultStageSet(), table, role, from, to)
+}
+
+// CanTransitionIn is CanTransitionTable under a store's stage vocabulary.
+func CanTransitionIn(set StageSet, table TransitionTable, role Role, from, to Stage) bool {
+	if !set.Valid(from) || !set.Valid(to) {
 		return false
 	}
 	if role == RoleHuman || role == RoleAdmin {

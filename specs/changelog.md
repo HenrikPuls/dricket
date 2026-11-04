@@ -6,6 +6,10 @@ top-level CHANGELOG.md and are written at release time from this file.
 
 ## Awaiting verification
 
+- Drey requirements R-01 to R-04 (owner request; dricket ids R-17 to R-20):
+  `x-` extension fields, `[stages]`, `dk put`, `dk move`, ADR-0011 —
+  handed over 2026-11-04 on branch claude/drey-requirements-r01-r04-1f2c67
+
 - Skeleton: R-0 — handed over 2026-11-02
 - Infrastructure and Phase 0: public repository published (CI green, rulesets active, Pages live), roadmap and architecture refined — handed over 2026-11-02
 - Spike: R-1 — handed over 2026-11-02
@@ -53,6 +57,35 @@ top-level CHANGELOG.md and are written at release time from this file.
   is `--parent` — handed over 2026-11-03
 
 ## Shipped
+
+### R-20 `dk move` (2026-11-04)
+`move <id> --stage <s> [-m note] [--if-version N] [--force] [--kind human]`:
+one commit, rev + 1, epoch unchanged, one log line; claim holder, human or
+admin on an unclaimed ticket; admin `--force` on a foreign claim clears it.
+Same-stage move is a no-op. JSON `{id, stage, from, rev}`. Tests: unclaimed
+move, role refusals (17), live claim (11), forced move, version (12),
+vocabulary (14), CLI JSON and exit codes.
+
+### R-19 Configurable stages (2026-11-04)
+`[stages]` (values, initial, terminal, claim, cancelled) in dricket.toml;
+claim, add, release, force-release, next, lint, validate and the transition
+table follow the vocabulary; replay does not check stage names. Default
+unchanged without the table. Tests: config parsing and rejection, lifecycle
+with a custom vocabulary, put/force-release, validate replay.
+
+### R-18 `dk put` (2026-11-04)
+`put <id> (-F <file> | -) [--if-version N] [--force] [--kind human]` writes
+the whole ticket without a checkout; identity and claim fields protected;
+LF-normalised; no-op when unchanged. JSON `{id, rev, commit,
+changed_fields}`. `--if-version 0` is now a valid guard for `put`, `move`
+and `set`. Tests: coordinator write, claimant write, admin override,
+identity/claim/secret/size refusals, CLI path.
+
+### R-17 Extension fields (2026-11-04)
+`x-<name>` header fields: preserved on every write, validated for shape and
+1 000 bytes, secret-scanned; `set` takes several pairs in one commit (empty
+`x-` value removes), `add --set`; `set --json` keeps its single-pair shape
+and adds `fields`. Tests: ticket model, service, CLI.
 
 ### R-16 Discoverable dricket agent skill (2026-11-04)
 Canonical `skills/dricket/SKILL.md`, embedded offline and installed by

@@ -53,6 +53,7 @@ local or remote store holds ticket files and the protected configuration.
   remote/bare stores, atomic ref updates for local non-bare stores (ADR-0010).
 - Two branches with different rights: protected `main` (config), writable `tickets`.
 - Trusted collaborators edit whole tickets; identity and coordination invariants are validated.
+- Frontends without a checkout write through `put` (whole ticket), `move` (stage) and `set` (free and `x-` fields): one commit each, guarded by `--if-version` (ADR-0011). The stage vocabulary is configurable (`[stages]`).
 - Leases by size and an `epoch` as cooperative fencing token, instead of heartbeats.
 - Structural snapshot and transition rules are checked over each commit diff.
 - Go and a static binary (ADR-0002).
@@ -134,6 +135,12 @@ whole-ticket commits publish by expected-old ref CAS before the same guarded
 adoption; ordinary local writes fast-forward a checked-out branch without
 overwriting pre-existing dirty paths (ADR-0010).
 
+`put` and `move` use the same write loop without the exact-base compare: the
+precondition re-reads the fresh ticket on every attempt, checks who may write
+(claim holder, a human or admin on an unclaimed ticket, an admin with
+`--force` on a foreign claim) and `--if-version`, then commits `rev + 1`
+(ADR-0011).
+
 ## 7. Deployment view
 
 One static binary per platform (`dricket`, alias `dk`), built by GoReleaser from
@@ -189,6 +196,7 @@ Index only; details in `docs/adr/`.
 | [0008](adr/0008-discovery-and-project-resolution.md) | Git-like store discovery and project resolution | accepted |
 | [0009](adr/0009-collaborative-whole-ticket-editing.md) | Collaborative whole-ticket editing | accepted |
 | [0010](adr/0010-local-and-remote-cas.md) | Local ref CAS and remote push CAS | accepted |
+| [0011](adr/0011-extension-fields-stages-put-move.md) | Extension fields, configurable stages, whole-ticket put and move | accepted |
 
 ## 10. Quality requirements
 

@@ -110,3 +110,35 @@ func TestValidateReportsBrokenConfig(t *testing.T) {
 		t.Fatal("no config-invalid finding")
 	}
 }
+
+func TestValidateReplaysHistoryWithoutTheCurrentStageVocabulary(t *testing.T) {
+	bare := setupBare(t)
+	svc := openSvc(t, bare, "alice")
+	ctx := context.Background()
+
+	// History written under the built-in stages, then the store switches
+	// to its own vocabulary: the old commits must stay valid, only the
+	// current snapshot is held against the new list.
+	if _, err := svc.Add(ctx, service.AddRequest{Prefix: "app", Title: "old world"}); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if _, err := svc.Release(ctx, "app-1", "review", ""); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	cfgPushMain(t, bare, "dricket.toml", "[stages]\nvalues = [\"inbox\", \"build\", \"done\"]\nclaim = [\"build\"]\n")
+
+	findings, err := Store(ctx, svc.Store)
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	kinds := kindsOf(findings, "app-1")
+	if kinds["invalid-transition"] || kinds["identity-changed"] || kinds["epoch-invalid"] {
+		for _, f := range findings {
+			t.Logf("finding: %s", f)
+		}
+		t.Fatal("history replay applied the new stage vocabulary")
+	}
+	if !kinds["lint"] {
+		t.Error("the current snapshot (stage review) was not held against the new vocabulary")
+	}
+}
