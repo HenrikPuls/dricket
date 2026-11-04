@@ -6,6 +6,13 @@ top-level CHANGELOG.md and are written at release time from this file.
 
 ## Awaiting verification
 
+- Drey requirement R-24 (owner request; dricket id R-24): one-step change
+  under a short claim — `--claim` on `set`, `put` and `move` takes and
+  releases the claim inside the one commit (epoch unchanged, no lease
+  written, exit 11 unchanged on a foreign claim, every kind may write),
+  JSON gains `short_claim`, ADR-0012 — handed over 2026-11-04 on branch
+  claude/drey-requirements-r01-r04-1f2c67
+
 - Drey requirements R-01 to R-04 (owner request; dricket ids R-17 to R-20):
   `x-` extension fields, `[stages]`, `dk put`, `dk move`, ADR-0011 —
   handed over 2026-11-04 on branch claude/drey-requirements-r01-r04-1f2c67

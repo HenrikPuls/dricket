@@ -21,31 +21,35 @@ type FieldValue struct {
 
 // SetResult reports the changed fields of one `set` commit. For exactly
 // one pair the JSON keeps the original shape {id, key, value, rev} and adds
-// fields; for several pairs only {id, rev, fields} is present.
+// fields; for several pairs only {id, rev, fields} is present. ShortClaim
+// is true when the write ran under `--claim` (ADR-0012).
 type SetResult struct {
-	ID     string
-	Key    string
-	Value  string
-	Rev    int
-	Fields map[string]string
+	ID         string
+	Key        string
+	Value      string
+	Rev        int
+	Fields     map[string]string
+	ShortClaim bool
 }
 
 // MarshalJSON keeps the single-pair shape of earlier versions.
 func (r SetResult) MarshalJSON() ([]byte, error) {
 	if len(r.Fields) == 1 {
 		return json.Marshal(struct {
-			ID     string            `json:"id"`
-			Key    string            `json:"key"`
-			Value  string            `json:"value"`
-			Rev    int               `json:"rev"`
-			Fields map[string]string `json:"fields"`
-		}{r.ID, r.Key, r.Value, r.Rev, r.Fields})
+			ID         string            `json:"id"`
+			Key        string            `json:"key"`
+			Value      string            `json:"value"`
+			Rev        int               `json:"rev"`
+			Fields     map[string]string `json:"fields"`
+			ShortClaim bool              `json:"short_claim,omitempty"`
+		}{r.ID, r.Key, r.Value, r.Rev, r.Fields, r.ShortClaim})
 	}
 	return json.Marshal(struct {
-		ID     string            `json:"id"`
-		Rev    int               `json:"rev"`
-		Fields map[string]string `json:"fields"`
-	}{r.ID, r.Rev, r.Fields})
+		ID         string            `json:"id"`
+		Rev        int               `json:"rev"`
+		Fields     map[string]string `json:"fields"`
+		ShortClaim bool              `json:"short_claim,omitempty"`
+	}{r.ID, r.Rev, r.Fields, r.ShortClaim})
 }
 
 // Set changes one field. State and identity fields are rejected: they
@@ -55,14 +59,16 @@ func (s *Service) Set(ctx context.Context, id, key, value string, ifVersion int)
 	if ifVersion > 0 {
 		guard = &ifVersion
 	}
-	return s.SetMany(ctx, id, []FieldValue{{Key: key, Value: value}}, guard)
+	return s.SetMany(ctx, id, []FieldValue{{Key: key, Value: value}}, guard, false)
 }
 
 // SetMany changes several free or extension fields in one commit with one
 // rev bump. An extension (`x-<name>`) with an empty value is removed. All
 // pairs are validated before anything is written. ifVersion nil means not
 // guarded; 0 is a real version (a ticket never written after its add).
-func (s *Service) SetMany(ctx context.Context, id string, pairs []FieldValue, ifVersion *int) (SetResult, error) {
+// claim runs the write under a short claim (ADR-0012): the ticket must be
+// unclaimed, and claim and release share the one commit.
+func (s *Service) SetMany(ctx context.Context, id string, pairs []FieldValue, ifVersion *int, claim bool) (SetResult, error) {
 	id = strings.ToLower(strings.TrimSpace(id))
 	path, err := PathFor(id)
 	if err != nil {
@@ -109,10 +115,14 @@ func (s *Service) SetMany(ctx context.Context, id string, pairs []FieldValue, if
 			if ifVersion != nil && tk.Rev != *ifVersion {
 				return errf(KindConflict, "ticket %s is at rev %d, expected %d", id, tk.Rev, *ifVersion)
 			}
-			if tk.Owner != "" && tk.Owner != s.Owner {
+			if claim {
+				if err := s.checkShortClaim(tk, false, id, "set"); err != nil {
+					return err
+				}
+			} else if tk.Owner != "" && tk.Owner != s.Owner {
 				return errf(KindClaimed, "ticket %s is claimed by %s", id, tk.Owner)
 			}
-			out = SetResult{ID: id, Rev: tk.Rev + 1}
+			out = SetResult{ID: id, Rev: tk.Rev + 1, ShortClaim: claim}
 			return nil
 		},
 		Mutate: func(w store.Worktree) error {
@@ -137,7 +147,11 @@ func (s *Service) SetMany(ctx context.Context, id string, pairs []FieldValue, if
 				out.Key, out.Value = p.Key, out.Fields[p.Key]
 			}
 			tk.Rev++
-			appendLog(&tk, s.Owner, "set "+strings.Join(keys, ", "), s.Now())
+			event := "set " + strings.Join(keys, ", ")
+			if claim {
+				event += shortClaimMark
+			}
+			appendLog(&tk, s.Owner, event, s.Now())
 			if err := s.checkLint(tk, id); err != nil {
 				return err
 			}

@@ -182,6 +182,25 @@ a forced `move` clears the claim, like `force-release`, and keeps the epoch.
 `--if-version N` compares `rev` (exit 12 on mismatch); it is required unless
 the caller holds the claim. `0` is a valid version.
 
+### One-step change under a short claim (`--claim`, ADR-0012)
+
+`set`, `put` and `move` accept `--claim`: claim, change and release share
+the one commit, so the promise "no write without a claim" holds for these
+writes without the human/admin exception above. The ticket must be
+unclaimed — a foreign claim is exit 11 as ever, the caller's own claim is
+exit 14 (a real claim needs no short one), and `--claim` excludes
+`--force`. Under a short claim every kind may write, agent or human.
+Because claim and release never land in a committed state, the owner is
+unchanged in every committed state: the `epoch` stays (the transition
+invariant requires that while the owner stays) and no `claimed_at` or
+`lease_until` is ever written — the single CAS commit is the mutual
+exclusion. `set` and `move` mark their log line with "(short claim)" (its
+timestamp is claim and release time at once); `put` keeps the document
+byte-exact and marks the commit message instead. `move --claim` applies
+the transition policy of the caller's `--kind`, like the kind of a real
+claim. The version guard is unchanged: `put --claim` still requires
+`--if-version`.
+
 ### Command results (`--json`, inside the `data` envelope)
 
 | Command | `data` |
@@ -190,6 +209,12 @@ the caller holds the claim. `0` is a valid version.
 | `set` with several pairs | `{"id","rev","fields":{key:value,...}}` |
 | `put` | `{"id","rev","commit","changed_fields":["x-persona","body"]}`; `commit` is the head after the write, `changed_fields` lists header keys (`rev` excluded) in canonical order, then `"body"`; `[]` for a no-op |
 | `move` | `{"id","stage","from","rev"}` |
+
+With `--claim` the result of each of the three commands adds
+`"short_claim": true` (omitted otherwise): `set` keeps its one- or
+multi-pair shape, `put` becomes
+`{"id","rev","commit","changed_fields":[...],"short_claim":true}`, `move`
+becomes `{"id","stage","from","rev","short_claim":true}`.
 
 ## Id allocation
 

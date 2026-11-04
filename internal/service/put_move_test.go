@@ -48,7 +48,7 @@ func TestExtensionFieldsAreSetPreservedAndRemoved(t *testing.T) {
 	before := commitCount(t, bare)
 	res, err := s.SetMany(ctx, id, []FieldValue{
 		{Key: "x-rank", Value: "5000"}, {Key: "x-persona", Value: "paul"}, {Key: "title", Value: "renamed"},
-	}, nil)
+	}, nil, false)
 	if err != nil {
 		t.Fatalf("set many: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestExtensionFieldValidation(t *testing.T) {
 	wantCode(t, "oversized value", err, 14)
 	_, err = alice.Set(ctx, id, "x-multi", "a\nb", 0)
 	wantCode(t, "multi-line value", err, 14)
-	_, err = alice.SetMany(ctx, id, []FieldValue{{Key: "x-a", Value: "1"}, {Key: "x-a", Value: "2"}}, nil)
+	_, err = alice.SetMany(ctx, id, []FieldValue{{Key: "x-a", Value: "1"}, {Key: "x-a", Value: "2"}}, nil, false)
 	wantCode(t, "duplicate key", err, 14)
 	_, err = alice.Set(ctx, id, "x-token", "ghp_"+strings.Repeat("a1B2", 10), 0)
 	wantCode(t, "secret in value", err, 19)

@@ -53,6 +53,7 @@ func newPutFlagSet() *flag.FlagSet {
 	fs.String("F", "", "read the complete ticket.md from a file (or pass '-' for stdin)")
 	fs.Int("if-version", 0, "expected rev of the ticket (required unless you hold the claim)")
 	fs.Bool("force", false, "admin: overwrite a ticket that someone else has claimed")
+	fs.Bool("claim", false, "take and release a short claim inside the one commit (unclaimed tickets)")
 	fs.String("kind", "agent", "actor kind agent or human")
 	return fs
 }
@@ -85,6 +86,7 @@ func runPut(e *env, args []string) (any, *cliError) {
 		IfVersion: versionFlag(fs),
 		Force:     boolFlag(fs, "force"),
 		Kind:      ticket.Kind(stringFlag(fs, "kind")),
+		Claim:     boolFlag(fs, "claim"),
 	})
 	if err != nil {
 		return nil, wrapErr(err)
@@ -109,6 +111,7 @@ func newMoveFlagSet() *flag.FlagSet {
 	fs.StringVar(&message, "message", "", "note for the log")
 	fs.Int("if-version", 0, "expected rev of the ticket")
 	fs.Bool("force", false, "admin: move a ticket that someone else has claimed and clear the claim")
+	fs.Bool("claim", false, "take and release a short claim inside the one commit (unclaimed tickets)")
 	fs.String("kind", "agent", "actor kind agent or human")
 	return fs
 }
@@ -130,6 +133,7 @@ func runMove(e *env, args []string) (any, *cliError) {
 		IfVersion: versionFlag(fs),
 		Force:     boolFlag(fs, "force"),
 		Kind:      ticket.Kind(stringFlag(fs, "kind")),
+		Claim:     boolFlag(fs, "claim"),
 	})
 	if err != nil {
 		return nil, wrapErr(err)

@@ -423,6 +423,7 @@ func runComment(e *env, args []string) (any, *cliError) {
 func newSetFlagSet() *flag.FlagSet {
 	fs := newFlagSet("set")
 	fs.Int("if-version", 0, "expected rev of the ticket")
+	fs.Bool("claim", false, "take and release a short claim inside the one commit (unclaimed tickets)")
 	return fs
 }
 
@@ -442,7 +443,7 @@ func runSet(e *env, args []string) (any, *cliError) {
 	if cerr != nil {
 		return nil, cerr
 	}
-	res, err := s.SetMany(context.Background(), fs.Arg(0), pairs, versionFlag(fs))
+	res, err := s.SetMany(context.Background(), fs.Arg(0), pairs, versionFlag(fs), boolFlag(fs, "claim"))
 	if err != nil {
 		return nil, wrapErr(err)
 	}

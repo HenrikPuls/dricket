@@ -53,7 +53,7 @@ local or remote store holds ticket files and the protected configuration.
   remote/bare stores, atomic ref updates for local non-bare stores (ADR-0010).
 - Two branches with different rights: protected `main` (config), writable `tickets`.
 - Trusted collaborators edit whole tickets; identity and coordination invariants are validated.
-- Frontends without a checkout write through `put` (whole ticket), `move` (stage) and `set` (free and `x-` fields): one commit each, guarded by `--if-version` (ADR-0011). The stage vocabulary is configurable (`[stages]`).
+- Frontends without a checkout write through `put` (whole ticket), `move` (stage) and `set` (free and `x-` fields): one commit each, guarded by `--if-version` (ADR-0011). With `--claim` each of them takes and releases the claim inside the same commit, so the write needs no permission exception (ADR-0012). The stage vocabulary is configurable (`[stages]`).
 - Leases by size and an `epoch` as cooperative fencing token, instead of heartbeats.
 - Structural snapshot and transition rules are checked over each commit diff.
 - Go and a static binary (ADR-0002).
@@ -197,6 +197,7 @@ Index only; details in `docs/adr/`.
 | [0009](adr/0009-collaborative-whole-ticket-editing.md) | Collaborative whole-ticket editing | accepted |
 | [0010](adr/0010-local-and-remote-cas.md) | Local ref CAS and remote push CAS | accepted |
 | [0011](adr/0011-extension-fields-stages-put-move.md) | Extension fields, configurable stages, whole-ticket put and move | accepted |
+| [0012](adr/0012-one-step-change-under-a-short-claim.md) | One-step change under a short claim | accepted |
 
 ## 10. Quality requirements
 

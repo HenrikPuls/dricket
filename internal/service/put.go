@@ -85,6 +85,10 @@ type PutOptions struct {
 	IfVersion *int // nil: not given
 	Force     bool
 	Kind      ticket.Kind // caller kind; empty means agent
+	// Claim runs the write under a short claim (ADR-0012): the ticket
+	// must be unclaimed, every kind may write, and --if-version is still
+	// required because the caller holds no committed claim.
+	Claim bool
 }
 
 // PutResult reports an accepted whole-ticket write. When the document
@@ -95,6 +99,7 @@ type PutResult struct {
 	Rev           int      `json:"rev"`
 	Commit        string   `json:"commit"`
 	ChangedFields []string `json:"changed_fields"`
+	ShortClaim    bool     `json:"short_claim,omitempty"`
 }
 
 // Put publishes the complete text of a ticket as the new content, without a
@@ -146,9 +151,15 @@ func (s *Service) Put(ctx context.Context, id, content string, opts PutOptions) 
 			if err != nil {
 				return err
 			}
-			mode, err := s.writeRights(cfg, fresh, kind, opts.Force, id, "put")
-			if err != nil {
-				return err
+			var mode WriteMode
+			if opts.Claim {
+				if err := s.checkShortClaim(fresh, opts.Force, id, "put"); err != nil {
+					return err
+				}
+			} else {
+				if mode, err = s.writeRights(cfg, fresh, kind, opts.Force, id, "put"); err != nil {
+					return err
+				}
 			}
 			if err := checkVersion(fresh, mode, opts.IfVersion, id, "put"); err != nil {
 				return err
@@ -185,11 +196,17 @@ func (s *Service) Put(ctx context.Context, id, content string, opts PutOptions) 
 	if opts.Force {
 		spec.Message = "dricket: put " + id + " (admin override of a claim)"
 	}
+	if opts.Claim {
+		// put never touches the document's log; the commit message
+		// carries the mark of the short claim (ADR-0012).
+		spec.Message += " (short claim)"
+	}
 	err = s.Store.Write(ctx, spec)
 	var stop errStop
 	if err != nil && !errors.As(err, &stop) {
 		return PutResult{}, err
 	}
+	out.ShortClaim = opts.Claim
 	out.Commit, err = s.Store.HeadSHA(ctx)
 	if err != nil {
 		return PutResult{}, err
@@ -236,15 +253,20 @@ type MoveOptions struct {
 	IfVersion *int // nil: not given
 	Force     bool
 	Kind      ticket.Kind
+	// Claim runs the move under a short claim (ADR-0012): the ticket must
+	// be unclaimed, and the caller's --kind governs the transition policy
+	// like the kind of a real claim would.
+	Claim bool
 }
 
 // MoveResult reports a stage change. From is the previous stage; when the
 // ticket already was in the target stage nothing is committed.
 type MoveResult struct {
-	ID    string `json:"id"`
-	Stage string `json:"stage"`
-	From  string `json:"from"`
-	Rev   int    `json:"rev"`
+	ID         string `json:"id"`
+	Stage      string `json:"stage"`
+	From       string `json:"from"`
+	Rev        int    `json:"rev"`
+	ShortClaim bool   `json:"short_claim,omitempty"`
 }
 
 // Move changes the stage of a ticket in one commit: rev + 1, epoch
@@ -287,7 +309,14 @@ func (s *Service) Move(ctx context.Context, id string, stage ticket.Stage, opts 
 			if err != nil {
 				return err
 			}
-			if mode, err = s.writeRights(cfg, fresh, kind, opts.Force, id, "move"); err != nil {
+			claimRole := roleOf(fresh.Kind)
+			if opts.Claim {
+				if err = s.checkShortClaim(fresh, opts.Force, id, "move"); err != nil {
+					return err
+				}
+				mode = WriteMode{Claimant: true}
+				claimRole = roleOf(kind)
+			} else if mode, err = s.writeRights(cfg, fresh, kind, opts.Force, id, "move"); err != nil {
 				return err
 			}
 			if opts.IfVersion != nil {
@@ -296,9 +325,9 @@ func (s *Service) Move(ctx context.Context, id string, stage ticket.Stage, opts 
 				}
 			}
 			if mode.Claimant && !cfg.IsAdmin(s.Owner) &&
-				!ticket.CanTransitionIn(cfg.Stages, cfg.Transitions, roleOf(fresh.Kind), fresh.Stage, stage) && fresh.Stage != stage {
+				!ticket.CanTransitionIn(cfg.Stages, cfg.Transitions, claimRole, fresh.Stage, stage) && fresh.Stage != stage {
 				return errf(KindInvalid, "%s may not move %s from %s to %s",
-					roleOf(fresh.Kind), id, fresh.Stage, stage)
+					claimRole, id, fresh.Stage, stage)
 			}
 			prevOwner = fresh.Owner
 			out = MoveResult{ID: id, Stage: string(stage), From: string(fresh.Stage), Rev: fresh.Rev}
@@ -315,6 +344,9 @@ func (s *Service) Move(ctx context.Context, id string, stage ticket.Stage, opts 
 			}
 			now := s.Now()
 			event := "move " + id + " " + string(tk.Stage) + " -> " + string(stage)
+			if opts.Claim {
+				event += shortClaimMark
+			}
 			if mode.Forced {
 				tk.Owner = ""
 				tk.ClaimedAt = time.Time{}
@@ -339,5 +371,6 @@ func (s *Service) Move(ctx context.Context, id string, stage ticket.Stage, opts 
 	if err != nil && !errors.As(err, &stop) {
 		return MoveResult{}, err
 	}
+	out.ShortClaim = opts.Claim
 	return out, nil
 }
