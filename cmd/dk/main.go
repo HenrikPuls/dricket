@@ -164,7 +164,7 @@ func run(args []string) int {
 	}
 	for _, c := range registry {
 		if c.name == name {
-			if helpRequested(cmdArgs) {
+			if helpRequested(c, cmdArgs) {
 				_, _ = io.WriteString(e.stdout, commandHelp(c))
 				return exitOK
 			}
@@ -181,25 +181,46 @@ func run(args []string) int {
 	return e.fail(usageError("unknown command %q (see --help)", name))
 }
 
-func helpRequested(args []string) bool {
-	for _, arg := range args {
+func helpRequested(c command, args []string) bool {
+	var fs *flag.FlagSet
+	if c.flags != nil {
+		fs = c.flags()
+	}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 		if arg == "--" {
 			return false
 		}
 		if arg == "-h" || arg == "--help" {
 			return true
 		}
+		if fs != nil && optionValueRequired(fs, arg) && i+1 < len(args) {
+			i++
+		}
 	}
 	return false
 }
 
-// parseGlobals extracts global flags, which may appear before the command.
-// A non-nil result means the flag set already produced the output
-// (--version) and the caller exits successfully.
+// parseGlobals extracts global options without consuming command-option values
+// or anything after --. A non-nil result handles --version immediately.
 func parseGlobals(e *env, args []string) ([]string, any, *cliError) {
 	var rest []string
+	var commandFlags *flag.FlagSet
+	commandSeen := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if commandSeen && a == "--" {
+			rest = append(rest, args[i:]...)
+			break
+		}
+		if commandSeen && commandFlags != nil && optionValueRequired(commandFlags, a) {
+			rest = append(rest, a)
+			if i+1 < len(args) {
+				i++
+				rest = append(rest, args[i])
+			}
+			continue
+		}
 		switch {
 		case a == "--json":
 			e.json = true
@@ -221,6 +242,15 @@ func parseGlobals(e *env, args []string) ([]string, any, *cliError) {
 			return nil, versionData(), nil
 		default:
 			rest = append(rest, a)
+			if !commandSeen {
+				commandSeen = true
+				for _, c := range registry {
+					if c.name == a && c.flags != nil {
+						commandFlags = c.flags()
+						break
+					}
+				}
+			}
 		}
 	}
 	return rest, nil, nil

@@ -214,6 +214,21 @@ func intFlag(fs *flag.FlagSet, name string) int {
 	return fs.Lookup(name).Value.(flag.Getter).Get().(int)
 }
 
+func optionValueRequired(fs *flag.FlagSet, arg string) bool {
+	name := arg
+	if eq := strings.IndexByte(name, '='); eq >= 0 {
+		return false
+	}
+	registered := fs.Lookup(strings.TrimLeft(name, "-"))
+	if registered == nil {
+		return false
+	}
+	if boolean, ok := registered.Value.(interface{ IsBoolFlag() bool }); ok && boolean.IsBoolFlag() {
+		return false
+	}
+	return true
+}
+
 func newAddFlagSet() *flag.FlagSet {
 	fs := newFlagSet("add")
 	var message string
