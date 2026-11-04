@@ -187,7 +187,7 @@ func (s *Service) Lint(ctx context.Context, id string) ([]LintResult, error) {
 		for _, u := range unknown {
 			res.Findings = append(res.Findings, "warning: unknown key "+u)
 		}
-		for _, f := range ticket.Lint(tk) {
+		for _, f := range ticket.LintWith(tk, cfg.Stages, true) {
 			res.Findings = append(res.Findings, f.String())
 		}
 		if tk.Priority == "" {

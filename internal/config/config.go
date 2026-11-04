@@ -46,6 +46,10 @@ type Config struct {
 	PriorityDefault string
 
 	Transitions ticket.TransitionTable
+
+	// Stages is the stage vocabulary: the built-in seven unless
+	// dricket.toml has a [stages] table.
+	Stages ticket.StageSet
 }
 
 // raw is the decoded dricket.toml before defaults and parsing apply.
@@ -71,7 +75,17 @@ type raw struct {
 		Values  []string `toml:"values"`
 		Default string   `toml:"default"`
 	} `toml:"priorities"`
+	Stages      *rawStages             `toml:"stages"`
 	Transitions ticket.TransitionTable `toml:"transitions"`
+}
+
+// rawStages is the [stages] table; see mergeStages.
+type rawStages struct {
+	Values    []string `toml:"values"`
+	Initial   string   `toml:"initial"`
+	Terminal  []string `toml:"terminal"`
+	Claim     []string `toml:"claim"`
+	Cancelled string   `toml:"cancelled"`
 }
 
 // Defaults returns the built-in configuration, the starting values of
@@ -97,6 +111,7 @@ func Defaults() *Config {
 		PriorityValues:     []string{"critical", "high", "normal", "low"},
 		PriorityDefault:    "normal",
 		Transitions:        ticket.DefaultTransitions(),
+		Stages:             ticket.DefaultStageSet(),
 	}
 }
 
@@ -186,7 +201,10 @@ func Parse(data []byte) (*Config, error) {
 	if r.MinVersion != "" && !validVersion(r.MinVersion) {
 		return nil, fmt.Errorf("min_version %q is not dotted integers like \"0.2.0\"", r.MinVersion)
 	}
-	if err := mergeTransitions(cfg.Transitions, r.Transitions); err != nil {
+	if err := mergeStages(cfg, r.Stages); err != nil {
+		return nil, err
+	}
+	if err := mergeTransitions(cfg, r.Transitions); err != nil {
 		return nil, err
 	}
 	return cfg, nil
@@ -292,10 +310,83 @@ func ParsePrefixes(data []byte) ([]string, error) {
 	return r.Prefixes, nil
 }
 
+// mergeStages replaces the built-in stage vocabulary with the [stages]
+// table. values is required and ordered; initial defaults to the first
+// value; claim is required (a claim is only valid in these stages);
+// terminal defaults to none; cancelled is an optional reserved stage that
+// is always valid and satisfies depends. A custom vocabulary also swaps
+// the default agent transition table (see ticket.DefaultTransitionsFor).
+func mergeStages(cfg *Config, r *rawStages) error {
+	if r == nil {
+		return nil
+	}
+	if len(r.Values) == 0 {
+		return fmt.Errorf("stages.values must list at least one stage; leave [stages] out for the built-in set")
+	}
+	word := func(key, v string) error {
+		if v == "" || v != strings.ToLower(v) || !isPriorityWord(v) {
+			return fmt.Errorf("%s: %q is not a lower-case word of letters, digits and dashes", key, v)
+		}
+		return nil
+	}
+	set := ticket.StageSet{}
+	seen := map[string]bool{}
+	for _, v := range r.Values {
+		if err := word("stages.values", v); err != nil {
+			return err
+		}
+		if seen[v] {
+			return fmt.Errorf("stages.values: %q appears twice", v)
+		}
+		seen[v] = true
+		set.Values = append(set.Values, ticket.Stage(v))
+	}
+	set.Initial = set.Values[0]
+	if r.Initial != "" {
+		if !seen[r.Initial] {
+			return fmt.Errorf("stages.initial %q is not in stages.values", r.Initial)
+		}
+		set.Initial = ticket.Stage(r.Initial)
+	}
+	if r.Cancelled != "" {
+		if err := word("stages.cancelled", r.Cancelled); err != nil {
+			return err
+		}
+		set.Cancelled = ticket.Stage(r.Cancelled)
+	}
+	terminal := map[string]bool{}
+	for _, v := range r.Terminal {
+		if !seen[v] {
+			return fmt.Errorf("stages.terminal: %q is not in stages.values", v)
+		}
+		terminal[v] = true
+		set.Terminal = append(set.Terminal, ticket.Stage(v))
+	}
+	if len(r.Claim) == 0 {
+		return fmt.Errorf("stages.claim must list at least one stage in which a claim is valid")
+	}
+	for _, v := range r.Claim {
+		if !seen[v] {
+			return fmt.Errorf("stages.claim: %q is not in stages.values", v)
+		}
+		if terminal[v] || (r.Cancelled != "" && v == r.Cancelled) {
+			return fmt.Errorf("stages.claim: %q is a terminal stage", v)
+		}
+		set.Claim = append(set.Claim, ticket.Stage(v))
+	}
+	if set.IsTerminal(set.Initial) {
+		return fmt.Errorf("stages.initial %q must not be a terminal stage", set.Initial)
+	}
+	cfg.Stages = set
+	cfg.Transitions = ticket.DefaultTransitionsFor(set)
+	return nil
+}
+
 // mergeTransitions folds a partial [transitions] table over the defaults:
 // a missing role or stage keeps the default targets; an explicit empty
 // list means "no moves allowed from this stage".
-func mergeTransitions(base ticket.TransitionTable, overlay ticket.TransitionTable) error {
+func mergeTransitions(cfg *Config, overlay ticket.TransitionTable) error {
+	base := cfg.Transitions
 	for role, stages := range overlay {
 		r := ticket.Role(role)
 		if !ticket.ValidRole(r) {
@@ -305,13 +396,16 @@ func mergeTransitions(base ticket.TransitionTable, overlay ticket.TransitionTabl
 			return fmt.Errorf("transitions.%s: human and admin are fixed by the concept (they may move anything)", role)
 		}
 		for from, targets := range stages {
-			if !ticket.ValidStage(ticket.Stage(from)) {
+			if !cfg.Stages.Valid(ticket.Stage(from)) {
 				return fmt.Errorf("transitions.%s.%s: unknown stage", role, from)
 			}
 			for _, t := range targets {
-				if !ticket.ValidStage(ticket.Stage(t)) {
+				if !cfg.Stages.Valid(ticket.Stage(t)) {
 					return fmt.Errorf("transitions.%s.%s: unknown target stage %q", role, from, t)
 				}
+			}
+			if base[role] == nil {
+				base[role] = map[string][]string{}
 			}
 			base[role][from] = targets
 		}

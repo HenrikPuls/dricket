@@ -21,12 +21,12 @@ var serviceCmds = []command{
 	{name: "claim", usage: "claim <id> [options]", group: "Work", synopsis: "take a ticket", flags: newClaimFlagSet, run: runClaim},
 	{name: "sync", usage: "sync", group: "Work", synopsis: "fast-forward a clean ticket checkout", run: runSync},
 	{name: "restore", usage: "restore <path>", group: "Work", synopsis: "discard local changes to one path", run: runRestore},
-	{name: "commit", usage: "commit <id>", group: "Work", synopsis: "validate and publish an edited ticket", run: runCommit},
+	{name: "commit", usage: "commit <id> [options]", group: "Work", synopsis: "validate and publish an edited ticket", flags: newCommitFlagSet, run: runCommit},
 	{name: "release", usage: "release <id> [options]", group: "Work", synopsis: "publish and free a ticket", flags: newReleaseFlagSet, run: runRelease},
 	{name: "extend", usage: "extend <id> -m <reason>", group: "Work", synopsis: "extend the lease of a ticket", flags: newExtendFlagSet, run: runExtend},
 	{name: "note", usage: "note <id> -m <text>", group: "Work", synopsis: "add a progress note, keep the claim", flags: newNoteFlagSet, run: runNote},
 	{name: "comment", usage: "comment <id> (-m <text> | -F <file>)", group: "Work", synopsis: "append a comment", flags: newCommentFlagSet, run: runComment},
-	{name: "set", usage: "set <id> key=value [options]", group: "Work", synopsis: "change a free field", flags: newSetFlagSet, run: runSet},
+	{name: "put", usage: "put <id> (-F <file> | -) [options]", group: "Work", synopsis: "write a whole ticket without a checkout", flags: newPutFlagSet, run: runPut},
 	{name: "ls", usage: "ls [options]", group: "Inspect", synopsis: "list tickets", flags: newLsFlagSet, run: runLs},
 	{name: "next", usage: "next [options]", group: "Work", synopsis: "next suitable ticket", flags: newNextFlagSet, run: runNext},
 	{name: "search", usage: "search [options] <query>", group: "Inspect", synopsis: "full-text search", flags: newSearchFlagSet, run: runSearch},
@@ -206,6 +206,10 @@ func stringFlag(fs *flag.FlagSet, name string) string {
 
 func textFlag(fs *flag.FlagSet) string { return stringFlag(fs, "message") }
 
+func stringsFlag(fs *flag.FlagSet, name string) []string {
+	return fs.Lookup(name).Value.(flag.Getter).Get().([]string)
+}
+
 func boolFlag(fs *flag.FlagSet, name string) bool {
 	return fs.Lookup(name).Value.(flag.Getter).Get().(bool)
 }
@@ -244,6 +248,7 @@ func newAddFlagSet() *flag.FlagSet {
 	fs.String("size", "M", "claim size S, M or L")
 	fs.String("kind", "agent", "creator kind agent or human")
 	fs.String("priority", "", "priority from the store's configured values (default from dricket.toml)")
+	fs.Var(&repeatable{}, "set", "extension field x-<name>=value (repeatable)")
 	return fs
 }
 
@@ -275,7 +280,12 @@ func runAdd(e *env, args []string) (any, *cliError) {
 	if !e.json {
 		e.msg("project: %s (%s)\n", prefixValue, prefixSrc)
 	}
+	extensions, perr2 := parsePairs("add", stringsFlag(fs, "set"))
+	if perr2 != nil {
+		return nil, perr2
+	}
 	id, err := s.Add(context.Background(), service.AddRequest{
+		Extensions:  extensions,
 		Prefix:      prefixValue,
 		Title:       textFlag(fs),
 		Description: description,
@@ -335,7 +345,7 @@ func runClaim(e *env, args []string) (any, *cliError) {
 
 func newReleaseFlagSet() *flag.FlagSet {
 	fs := newFlagSet("release")
-	fs.String("stage", "review", "target stage")
+	fs.String("stage", "", "target stage (default review with the built-in stages; required with [stages])")
 	var message string
 	fs.StringVar(&message, "m", "", "result note")
 	fs.StringVar(&message, "message", "", "result note")
@@ -404,40 +414,6 @@ func runComment(e *env, args []string) (any, *cliError) {
 		e.outf("%s\n", f)
 	}
 	return map[string]any{"id": id, "file": f}, nil
-}
-
-// ------------------------------------------------------------------ set --
-
-func newSetFlagSet() *flag.FlagSet {
-	fs := newFlagSet("set")
-	fs.Int("if-version", 0, "expected rev of the ticket")
-	return fs
-}
-
-func runSet(e *env, args []string) (any, *cliError) {
-	fs := newSetFlagSet()
-	if cerr := parseFlags(fs, args); cerr != nil {
-		return nil, cerr
-	}
-	if fs.NArg() != 2 {
-		return nil, usageError("set: expected <id> key=value")
-	}
-	key, value, ok := strings.Cut(fs.Arg(1), "=")
-	if !ok {
-		return nil, usageError("set: expected key=value, got %q", fs.Arg(1))
-	}
-	s, cerr := e.svc()
-	if cerr != nil {
-		return nil, cerr
-	}
-	res, err := s.Set(context.Background(), fs.Arg(0), key, value, intFlag(fs, "if-version"))
-	if err != nil {
-		return nil, wrapErr(err)
-	}
-	if !e.json {
-		e.outf("%s %s = %s (rev %d)\n", res.ID, res.Key, res.Value, res.Rev)
-	}
-	return res, nil
 }
 
 // ------------------------------------------------------------------ ls --

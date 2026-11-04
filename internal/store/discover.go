@@ -64,7 +64,7 @@ func InspectRoot(ctx context.Context, dir string) (Discovery, bool, error) {
 		return Discovery{}, false, nil
 	}
 	root, err := runGitEnv(ctx, dir, Options{}, "rev-parse", "--show-toplevel")
-	if err != nil || filepath.Clean(strings.TrimSpace(root)) != filepath.Clean(dir) {
+	if err != nil || !samePath(strings.TrimSpace(root), dir) {
 		return Discovery{}, false, nil
 	}
 

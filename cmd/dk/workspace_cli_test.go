@@ -88,6 +88,51 @@ func TestCommitCLIWorkflow(t *testing.T) {
 	}
 }
 
+func TestCommitReleaseCLIWorkflow(t *testing.T) {
+	_, dir := setupCLIWorkspace(t)
+	editCLICommitTicket(t, dir, "title: old title", "title: done title")
+	if code, _, _ := runForTest(t, "commit", "app-1", "--release", "--stage", "nowhere"); code != 14 {
+		t.Fatalf("unknown stage = %d, want 14", code)
+	}
+	code, out, errMsg := runForTest(t, "--json", "commit", "app-1", "--release", "-m", "fixed")
+	if code != 0 {
+		t.Fatalf("commit --release = %d, %q, %q", code, out, errMsg)
+	}
+	var response struct {
+		Data struct {
+			ID     string `json:"id"`
+			Rev    int    `json:"rev"`
+			Synced bool   `json:"synced"`
+			Stage  string `json:"stage"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &response); err != nil {
+		t.Fatalf("json: %v in %q", err, out)
+	}
+	if response.Data.ID != "app-1" || response.Data.Rev != 2 || !response.Data.Synced || response.Data.Stage != "review" {
+		t.Fatalf("response = %+v", response)
+	}
+	// The ticket is free now: claim fields cleared, stage review, epoch
+	// unchanged (a release never changes the epoch).
+	code, out, errMsg = runForTest(t, "--json", "show", "app-1")
+	if code != 0 {
+		t.Fatalf("show = %d, %q, %q", code, out, errMsg)
+	}
+	var shown struct {
+		Data struct {
+			Content string `json:"content"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &shown); err != nil {
+		t.Fatalf("show json: %v in %q", err, out)
+	}
+	content := shown.Data.Content
+	if !strings.Contains(content, "stage: review") || !strings.Contains(content, "epoch: 1") ||
+		!strings.Contains(content, "\nowner: \n") || strings.Contains(content, "lease_until: 2") {
+		t.Fatalf("after commit --release:\n%s", content)
+	}
+}
+
 func TestSyncRestoreAndCommitErrors(t *testing.T) {
 	_, dir := setupCLIWorkspace(t)
 	editCLICommitTicket(t, dir, "title: old title", "title")
@@ -122,9 +167,11 @@ func TestLocalDirtyCheckoutConflictCLI(t *testing.T) {
 	editCLICommitTicket(t, dir, "title: old title", "title: local edit")
 	before := strings.TrimSpace(cliGit(t, dir, "rev-parse", "refs/heads/tickets"))
 
-	code, out, errMsg := runForTest(t, "--json", "set", "app-1", "title=conflicting write")
+	code, out, errMsg := putCLI(t, "app-1", -1, func(content string) string {
+		return strings.Replace(content, "title: old title", "title: conflicting write", 1)
+	})
 	if code != exitConflict {
-		t.Fatalf("dirty set = %d, %q, %q; want exit 12", code, out, errMsg)
+		t.Fatalf("dirty put = %d, %q, %q; want exit 12", code, out, errMsg)
 	}
 	var response struct {
 		Error struct {

@@ -54,6 +54,68 @@ top-level CHANGELOG.md and are written at release time from this file.
 
 ## Shipped
 
+### Windows CI: path identity instead of path strings (2026-11-04)
+The Windows job added with R-13 failed on the hosted runner, whose temp
+directory is an 8.3 short path (`RUNNER~1`) while Git reports the long
+form. Store discovery, the local-store ownership check and the workspace
+vs. selected-store check compared path strings and found "no store". They
+now compare file identity (`samePath`, `sameSpec`). Tests: `TestSamePath`;
+the existing discovery, local-store and workspace tests reproduce the
+failure when run with `TMP` set to a short path and pass with the fix.
+
+### R-25 Strict claim surface (2026-11-04)
+Owner decision after R-24: the promise "no write without a claim" holds
+without an exception for anyone. `set` and `move` removed; `put` is the
+only writer without a checkout and on an unclaimed ticket requires
+`--claim` (exit 17 otherwise); an admin's `--force` stays the only
+emergency path; `put` loses `--kind` and validates the priority value.
+`commit --release [--stage S] [-m note]` writes the edited ticket and
+frees the claim in one commit, with the exact-base, owner and epoch checks
+of `commit` and the release transition policy of the claim's kind; JSON
+gains `stage`. ADR-0013; ADR-0011 and ADR-0012 marked as partially
+superseded. Tests: service, validate and CLI suites reworked from set/move
+to put; commit-release service and CLI tests (one commit, freed claim,
+epoch unchanged, exit 14 for agent-to-done and unknown stage).
+
+### R-24 One-step change under a short claim (2026-11-04)
+`--claim` on `set`, `put` and `move` takes and releases the claim inside
+the one commit: the epoch stays (the transition invariant forbids a bump
+while the owner stays), no lease times are ever written, exit 11 unchanged
+on a foreign claim, the caller's own claim is exit 14, `--claim` excludes
+`--force`, every kind may write. JSON gains `short_claim`; `put` marks the
+commit message with "(short claim)". ADR-0012. Tests: service, validate
+replay of short-claim history, CLI. Superseded in part by R-25 the same
+day: the short claim lives on `put` only.
+
+### R-20 `dk move` (2026-11-04)
+`move <id> --stage <s> [-m note] [--if-version N] [--force] [--kind human]`:
+one commit, rev + 1, epoch unchanged, one log line; claim holder, human or
+admin on an unclaimed ticket; admin `--force` on a foreign claim clears it.
+Same-stage move is a no-op. JSON `{id, stage, from, rev}`. Tests: unclaimed
+move, role refusals (17), live claim (11), forced move, version (12),
+vocabulary (14), CLI JSON and exit codes.
+
+### R-19 Configurable stages (2026-11-04)
+`[stages]` (values, initial, terminal, claim, cancelled) in dricket.toml;
+claim, add, release, force-release, next, lint, validate and the transition
+table follow the vocabulary; replay does not check stage names. Default
+unchanged without the table. Tests: config parsing and rejection, lifecycle
+with a custom vocabulary, put/force-release, validate replay.
+
+### R-18 `dk put` (2026-11-04)
+`put <id> (-F <file> | -) [--if-version N] [--force] [--kind human]` writes
+the whole ticket without a checkout; identity and claim fields protected;
+LF-normalised; no-op when unchanged. JSON `{id, rev, commit,
+changed_fields}`. `--if-version 0` is now a valid guard for `put`, `move`
+and `set`. Tests: coordinator write, claimant write, admin override,
+identity/claim/secret/size refusals, CLI path.
+
+### R-17 Extension fields (2026-11-04)
+`x-<name>` header fields: preserved on every write, validated for shape and
+1 000 bytes, secret-scanned; `set` takes several pairs in one commit (empty
+`x-` value removes), `add --set`; `set --json` keeps its single-pair shape
+and adds `fields`. Tests: ticket model, service, CLI.
+
 ### R-16 Discoverable dricket agent skill (2026-11-04)
 Canonical `skills/dricket/SKILL.md`, embedded offline and installed by
 `dk setup-agent` at project scope with an AGENTS pointer, idempotent reruns

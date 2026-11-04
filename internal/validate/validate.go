@@ -72,12 +72,12 @@ func Store(ctx context.Context, st *store.Store) ([]Finding, error) {
 
 	cfg := loadConfig(ctx, st, r)
 
-	tickets, stages := checkCurrentState(ctx, st, r)
+	tickets, stages := checkCurrentState(ctx, st, cfg, r)
 	checkReferences(tickets, stages, r)
 	checkLeaseBounds(tickets, cfg, r)
 	checkPriorities(tickets, cfg, r)
 	checkPrefixRegister(ctx, st, stages, r)
-	if err := checkHistory(ctx, st, r); err != nil {
+	if err := checkHistory(ctx, st, cfg, r); err != nil {
 		return nil, err
 	}
 	sort.Slice(r.findings, func(i, j int) bool {
@@ -175,7 +175,7 @@ func checkLeaseBounds(tickets map[string]ticket.Ticket, cfg *config.Config, r *r
 
 // checkCurrentState parses every file under tickets/ and lints it.
 // It returns the parsed tickets by path and their stages by id.
-func checkCurrentState(ctx context.Context, st *store.Store, r *report) (map[string]ticket.Ticket, map[string]ticket.Stage) {
+func checkCurrentState(ctx context.Context, st *store.Store, cfg *config.Config, r *report) (map[string]ticket.Ticket, map[string]ticket.Stage) {
 	tickets := map[string]ticket.Ticket{}
 	stages := map[string]ticket.Stage{}
 	paths, err := st.List(ctx, "tickets/")
@@ -208,7 +208,7 @@ func checkCurrentState(ctx context.Context, st *store.Store, r *report) (map[str
 			for _, u := range unknown {
 				r.warn(id, "unknown-key", "%q (warning, newer tool?)", u)
 			}
-			for _, lf := range ticket.Lint(tk) {
+			for _, lf := range ticket.LintWith(tk, cfg.Stages, true) {
 				if lf.Warning {
 					r.warn(id, "lint", "%s", lf.String())
 				} else {
@@ -351,7 +351,7 @@ func checkReferences(tickets map[string]ticket.Ticket, stages map[string]ticket.
 }
 
 // checkHistory replays every commit that touched the ticket tree.
-func checkHistory(ctx context.Context, st *store.Store, r *report) error {
+func checkHistory(ctx context.Context, st *store.Store, cfg *config.Config, r *report) error {
 	commits, err := st.Commits(ctx)
 	if err != nil {
 		return fmt.Errorf("commits: %w", err)
@@ -377,13 +377,13 @@ func checkHistory(ctx context.Context, st *store.Store, r *report) error {
 			r.add("", "multi-ticket-commit", "%s touches %d tickets; the tool writes one ticket per commit", short(c), len(touched))
 		}
 		for _, ch := range changes {
-			checkHistoryChange(ctx, st, c, ch, r)
+			checkHistoryChange(ctx, st, cfg, c, ch, r)
 		}
 	}
 	return nil
 }
 
-func checkHistoryChange(ctx context.Context, st *store.Store, commit string, ch store.FileChange, r *report) {
+func checkHistoryChange(ctx context.Context, st *store.Store, cfg *config.Config, commit string, ch store.FileChange, r *report) {
 	p := ch.Path
 	shortCommit := short(commit)
 	if !strings.HasPrefix(p, "tickets/") {
@@ -404,7 +404,7 @@ func checkHistoryChange(ctx context.Context, st *store.Store, commit string, ch 
 			}
 			checkCreation(id, content, r)
 		default:
-			checkTransition(ctx, st, commit, p, id, r)
+			checkTransition(ctx, st, cfg, commit, p, id, r)
 		}
 	case strings.HasSuffix(p, ".md") && strings.Contains(p, "/comments/"):
 		switch ch.Status {
@@ -450,7 +450,9 @@ func checkCreation(id, content string, r *report) {
 }
 
 // checkTransition replays one change to a ticket file against its parent.
-func checkTransition(ctx context.Context, st *store.Store, commit, path, id string, r *report) {
+// The stage vocabulary is not checked in history: dricket.toml can change
+// the list of stages later, and old commits must stay valid.
+func checkTransition(ctx context.Context, st *store.Store, cfg *config.Config, commit, path, id string, r *report) {
 	cur, err := st.ShowRev(ctx, commit, path)
 	if err != nil {
 		r.add(id, "read-error", "%s: %v", short(commit), err)
@@ -482,7 +484,7 @@ func checkTransition(ctx context.Context, st *store.Store, commit, path, id stri
 		return
 	}
 
-	for _, finding := range ticket.ValidateTransition(prevTk, curTk) {
+	for _, finding := range ticket.ValidateTransitionWith(prevTk, curTk, cfg.Stages, false) {
 		kind := "invalid-transition"
 		switch finding.Field {
 		case "identity":

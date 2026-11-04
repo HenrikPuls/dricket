@@ -96,7 +96,7 @@ func (s *Service) Extend(ctx context.Context, id, reason string) (ExtendResult, 
 			tk.LeaseUntil = now.Add(lease)
 			tk.Rev++
 			appendLog(&tk, s.Owner, "extend "+id+": "+firstLine(reason), now)
-			if err := checkLint(tk, id); err != nil {
+			if err := s.checkLint(tk, id); err != nil {
 				return err
 			}
 			out.LeaseUntil = stamp(tk.LeaseUntil)
@@ -158,7 +158,7 @@ func (s *Service) Note(ctx context.Context, id, text string) (NoteResult, error)
 			now := s.Now()
 			tk.Rev++
 			appendLog(&tk, s.Owner, "note "+id+": "+firstLine(text), now)
-			if err := checkLint(tk, id); err != nil {
+			if err := s.checkLint(tk, id); err != nil {
 				return err
 			}
 			out = NoteResult{ID: id, Rev: tk.Rev}

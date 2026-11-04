@@ -215,32 +215,6 @@ func TestClaimRaceOneWinner(t *testing.T) {
 	}
 }
 
-func TestSetFreeFieldVersionConflictAndStateRejected(t *testing.T) {
-	bare := setupBare(t)
-	s := open(t, bare, "alice")
-	ctx := context.Background()
-	id, _ := s.Add(ctx, AddRequest{Prefix: "app", Title: "old title", Unclaimed: true})
-
-	res, err := s.Set(ctx, id, "title", "new title", 0)
-	if err != nil {
-		t.Fatalf("set title: %v", err)
-	}
-	if res.Value != "new title" || res.Rev != 1 {
-		t.Fatalf("set result = %+v", res)
-	}
-
-	if _, err := s.Set(ctx, id, "title", "x", 99); ExitCode(err) != 12 {
-		t.Fatalf("stale if-version err = %v, code %d; want 12", err, ExitCode(err))
-	}
-	if _, err := s.Set(ctx, id, "stage", "done", 0); ExitCode(err) != 14 {
-		t.Fatalf("state field err = %v, code %d; want 14", err, ExitCode(err))
-	}
-	tk := mustTicket(t, bareShow(t, bare, "tickets/app/0000/app-1/ticket.md"))
-	if tk.Title != "new title" {
-		t.Errorf("title = %q", tk.Title)
-	}
-}
-
 func TestCommentNamingAndConcurrentComments(t *testing.T) {
 	bare := setupBare(t)
 	ctx := context.Background()

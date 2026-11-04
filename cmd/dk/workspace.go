@@ -4,10 +4,12 @@ package main
 
 import (
 	"context"
+	"flag"
 	"os"
 
 	"github.com/HenrikPuls/dricket/internal/service"
 	"github.com/HenrikPuls/dricket/internal/store"
+	"github.com/HenrikPuls/dricket/internal/ticket"
 )
 
 func selectedWorkspace(e *env) (*store.Workspace, *service.Service, *cliError) {
@@ -28,7 +30,7 @@ func selectedWorkspace(e *env) (*store.Workspace, *service.Service, *cliError) {
 		return nil, nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 	}
 	storeRemote, storeBranch := s.Store.RemoteBranch()
-	if normalizeSpec(workspaceRemote+"#"+workspaceBranch) != normalizeSpec(storeRemote+"#"+storeBranch) {
+	if !sameSpec(workspaceRemote+"#"+workspaceBranch, storeRemote+"#"+storeBranch) {
 		return nil, nil, usageError("ticket checkout does not match the selected store")
 	}
 	return ws, s, nil
@@ -72,15 +74,33 @@ func runRestore(e *env, args []string) (any, *cliError) {
 	return map[string]any{"path": args[0]}, nil
 }
 
+func newCommitFlagSet() *flag.FlagSet {
+	fs := newFlagSet("commit")
+	fs.Bool("release", false, "free the claim in the same commit")
+	fs.String("stage", "", "release target stage (with --release; default review with the built-in stages)")
+	var message string
+	fs.StringVar(&message, "m", "", "result note (with --release)")
+	fs.StringVar(&message, "message", "", "result note (with --release)")
+	return fs
+}
+
 func runCommit(e *env, args []string) (any, *cliError) {
-	if len(args) != 1 {
+	fs := newCommitFlagSet()
+	if cerr := parseFlags(fs, args); cerr != nil {
+		return nil, cerr
+	}
+	if fs.NArg() != 1 {
 		return nil, usageError("commit: exactly one ticket id expected")
 	}
 	ws, s, cerr := selectedWorkspace(e)
 	if cerr != nil {
 		return nil, cerr
 	}
-	result, err := s.Commit(context.Background(), ws, args[0])
+	opts := service.CommitOptions{}
+	if boolFlag(fs, "release") {
+		opts = service.CommitOptions{Release: true, Stage: ticket.Stage(stringFlag(fs, "stage")), Note: textFlag(fs)}
+	}
+	result, err := s.Commit(context.Background(), ws, fs.Arg(0), opts)
 	if err != nil {
 		return nil, wrapErr(err)
 	}
@@ -88,7 +108,11 @@ func runCommit(e *env, args []string) (any, *cliError) {
 		e.msg("warning: commit %s was published, but the local checkout was not updated\n", result.Commit)
 	}
 	if !e.json {
-		e.outf("committed %s (rev %d, commit %s)\n", result.ID, result.Rev, result.Commit)
+		if result.Stage != "" {
+			e.outf("committed %s (rev %d, commit %s, released -> %s)\n", result.ID, result.Rev, result.Commit, result.Stage)
+		} else {
+			e.outf("committed %s (rev %d, commit %s)\n", result.ID, result.Rev, result.Commit)
+		}
 	}
 	return result, nil
 }

@@ -6,6 +6,12 @@ package ticket
 // snapshots. Content and workflow edits are allowed; identity and claim
 // protocol fields must remain coherent.
 func ValidateTransition(previous, current Ticket) []Finding {
+	return ValidateTransitionWith(previous, current, DefaultStageSet(), true)
+}
+
+// ValidateTransitionWith is ValidateTransition under a store's stage
+// vocabulary; see LintWith for checkVocab.
+func ValidateTransitionWith(previous, current Ticket, set StageSet, checkVocab bool) []Finding {
 	var findings []Finding
 	if current.ID != previous.ID || !current.CreatedAt.Equal(previous.CreatedAt) ||
 		current.CreatedBy != previous.CreatedBy || current.SchemaVersion != previous.SchemaVersion {
@@ -31,5 +37,5 @@ func ValidateTransition(previous, current Ticket) []Finding {
 			findings = append(findings, Finding{Field: "epoch", Message: "claim or takeover must increase epoch by exactly one"})
 		}
 	}
-	return append(findings, Lint(current)...)
+	return append(findings, LintWith(current, set, checkVocab)...)
 }

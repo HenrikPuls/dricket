@@ -3,6 +3,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -35,17 +36,16 @@ func TestPriorityDefaultsAndValidation(t *testing.T) {
 		t.Fatalf("add bogus priority err = %v, code %d; want 14", err, ExitCode(err))
 	}
 
-	// set can change the priority within the configured set.
-	if _, err := alice.Set(ctx, id, "priority", "critical", 0); err != nil {
-		t.Fatalf("set priority: %v", err)
-	}
+	// put can change the priority within the configured set; an unknown
+	// value is refused (the ticket is claimed, so this is a claimant put).
+	putField(t, alice, bare, id, "priority", "critical")
 	tk = mustTicket(t, bareShow(t, bare, "tickets/app/0000/app-1/ticket.md"))
 	if tk.Priority != "critical" {
-		t.Errorf("priority after set = %q, want critical", tk.Priority)
+		t.Errorf("priority after put = %q, want critical", tk.Priority)
 	}
-	if _, err := alice.Set(ctx, id, "priority", "bogus", 0); ExitCode(err) != 14 {
-		t.Fatalf("set bogus priority err = %v, code %d; want 14", err, ExitCode(err))
-	}
+	content := bareShow(t, bare, "tickets/app/0000/app-1/ticket.md")
+	_, err = alice.Put(ctx, id, strings.Replace(content, "priority: critical", "priority: bogus", 1), PutOptions{})
+	wantCode(t, "put bogus priority", err, 14)
 }
 
 func TestPriorityFromConfig(t *testing.T) {
@@ -72,10 +72,8 @@ default = "urgent"
 	if _, err := alice.Add(ctx, AddRequest{Prefix: "app", Title: "x", Priority: "high"}); ExitCode(err) != 14 {
 		t.Fatalf("add high outside custom set err = %v, code %d; want 14", err, ExitCode(err))
 	}
-	// A configured value works, also through set.
-	if _, err := alice.Set(ctx, id, "priority", "normal", 0); err != nil {
-		t.Fatalf("set normal: %v", err)
-	}
+	// A configured value works, also through put.
+	putField(t, alice, bare, id, "priority", "normal")
 }
 
 func TestPriorityVisibleInQueries(t *testing.T) {
@@ -130,9 +128,7 @@ func TestNextOrdersByPriorityThenNumber(t *testing.T) {
 
 	// Within one priority rank the lowest number wins: demoting app-2
 	// to normal puts it in a rank with app-3, and the lower number wins.
-	if _, err := alice.Set(ctx, "app-2", "priority", "normal", 0); err != nil {
-		t.Fatalf("set: %v", err)
-	}
+	putField(t, alice, bare, "app-2", "priority", "normal")
 	res, err = alice.Next(ctx, NextOptions{})
 	if err != nil || res.ID != "app-2" || res.Priority != "normal" {
 		t.Fatalf("next after demote = %+v, %v; want app-2 (lowest number in the normal rank)", res, err)

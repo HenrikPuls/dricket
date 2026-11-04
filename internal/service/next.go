@@ -32,15 +32,15 @@ type NextResult struct {
 // eligible reports whether a ticket can be worked on now: free and open,
 // or its lease expired past the grace period (a takeover candidate), with
 // every scheduling dependency done or cancelled. Parent is hierarchy only.
-func eligible(tk ticket.Ticket, stages map[string]ticket.Stage, now time.Time) bool {
-	free := tk.Owner == "" && tk.Stage == ticket.StageOpen
+func eligible(tk ticket.Ticket, stages map[string]ticket.Stage, set ticket.StageSet, now time.Time) bool {
+	free := tk.Owner == "" && set.Pickable(tk.Stage)
 	expired := tk.Owner != "" && tk.LeaseUntil.Add(Grace).Before(now)
 	if !free && !expired {
 		return false
 	}
 	for _, dep := range tk.Depends {
 		s, ok := stages[dep]
-		if !ok || (s != ticket.StageDone && s != ticket.StageCancelled) {
+		if !ok || !set.IsTerminal(s) {
 			return false
 		}
 	}
@@ -104,7 +104,7 @@ func (s *Service) Next(ctx context.Context, opts NextOptions) (*NextResult, erro
 
 	var candidates []ticket.Ticket
 	for _, tk := range all {
-		if eligible(tk, stages, s.Now()) {
+		if eligible(tk, stages, cfg.Stages, s.Now()) {
 			candidates = append(candidates, tk)
 		}
 	}
@@ -140,7 +140,7 @@ func (s *Service) Next(ctx context.Context, opts NextOptions) (*NextResult, erro
 		}
 		res.Claim = &claim
 		res.Epoch = claim.Epoch
-		res.Stage = string(ticket.StageInProgress)
+		res.Stage = string(cfg.Stages.AfterClaim(best.Stage, claim.Takeover))
 	}
 	return res, nil
 }

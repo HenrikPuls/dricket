@@ -64,10 +64,11 @@ Field rules are structural, not per-field authorization:
 | immutable identity | `id`, `created_at`, `created_by`, `schema_version`; `id` equals the path |
 | claim and lease invariants | `owner`, `kind`, `size`, `claimed_at`, `lease_until`, `epoch`, `rev`, `extensions` |
 | editable content and workflow | `stage`, `title`, `labels`, `depends`, `parent`, `touches`, `branch`, `repos`, `priority`, and the body |
+| extension fields | `x-<name>` (`^x-[a-z0-9][a-z0-9-]*$`): single line, at most 1 000 bytes, secret-scanned, never interpreted, preserved in order on every write (ADR-0011) |
 
 Timestamps are RFC 3339 in UTC. Empty values are written as `key:` with
 nothing after the colon (an unclaimed ticket has an empty `owner`).
-Unknown keys are warnings, never errors: newer tools must not break older
+Extension fields are the supported place for consumer metadata; other unknown keys are warnings, never errors: newer tools must not break older
 repos, and tool writes preserve unknown fields.
 
 The body carries three fixed headings: *Description*, *Result* and *Log*.
@@ -153,6 +154,61 @@ The normal workflow is `claim`, `sync`, an ordinary editor, and `commit`:
   guarded adoption, because the edited file is intentionally dirty. A change to
   the same ticket is exit 12. Comments and unrelated tickets can advance
   without causing that conflict.
+- `commit <id> --release [--stage S] [-m note]` writes the edited ticket and
+  frees the claim in the same commit (ADR-0013): the exact-base, owner and
+  epoch checks are the ones of `commit`, and the release transition policy of
+  the claim's kind applies to the target stage (default `review` with the
+  built-in stages; `--stage` is required with a configured `[stages]`
+  vocabulary, exit 14 for an unknown or unreachable one). The `epoch` stays,
+  no lease times are written, one log line `commit-release <id> -> <stage>`
+  records the freeing and `-m` becomes the result note.
+
+## Writes without a checkout
+
+`put` writes a ticket without `claim`, `sync` and an exact edit base
+(ADR-0011, ADR-0013). It is one commit with `rev` + 1, retried from a fresh
+base like every write.
+
+- `put <id> (-F <file> | -)` replaces the whole ticket. Identity and claim
+  fields (`owner`, `kind`, `size`, `claimed_at`, `lease_until`, `epoch`,
+  `extensions`) must equal the current ticket, `rev` in the document is
+  ignored, CRLF is normalised to LF, the secret scan and the size limit
+  (body 100 000 bytes) apply and the whole transition is linted. A document
+  equal to the current ticket is a no-op without a commit.
+
+Who may call `put`: the claim holder; on an unclaimed ticket only with
+`--claim` (exit 17 without it — no exception for humans or admins); on a
+ticket claimed by someone else nobody (exit 11), except an admin with
+`--force` (exit 17 without admin). A forced `put` keeps the claim fields
+(the claimant's next exact-base `commit` fails with exit 12).
+`--if-version N` compares `rev` (exit 12 on mismatch); it is required
+unless the caller holds the claim. `0` is a valid version.
+
+### One-step change under a short claim (`put --claim`, ADR-0012, ADR-0013)
+
+`put --claim` takes the claim and frees it inside the one commit, so the
+promise "no write without a claim" holds without an exception for anyone.
+The ticket must be unclaimed — a foreign claim is exit 11 as ever, the
+caller's own claim is exit 14 (a real claim needs no short one), and
+`--claim` excludes `--force`. Under a short claim every kind may write,
+agent or human. Because claim and release never land in a committed state,
+the owner is unchanged in every committed state: the `epoch` stays (the
+transition invariant requires that while the owner stays) and no
+`claimed_at` or `lease_until` is ever written — the single CAS commit is
+the mutual exclusion. `put` keeps the document byte-exact and marks the
+commit message with "(short claim)". The version guard is unchanged:
+`put --claim` still requires `--if-version`.
+
+### Command results (`--json`, inside the `data` envelope)
+
+| Command | `data` |
+|---|---|
+| `put` | `{"id","rev","commit","changed_fields":["x-persona","body"]}`; `commit` is the head after the write, `changed_fields` lists header keys (`rev` excluded) in canonical order, then `"body"`; `[]` for a no-op |
+| `commit` | `{"id","rev","commit","synced"}` |
+| `commit --release` | `{"id","rev","commit","synced","stage":"review"}` |
+
+With `--claim` the `put` result adds `"short_claim": true` (omitted
+otherwise): `{"id","rev","commit","changed_fields":[...],"short_claim":true}`.
 
 ## Id allocation
 
@@ -193,6 +249,13 @@ secret_scan = true        # refuse likely credentials before they land
 values = ["critical", "high", "normal", "low"]   # allowed values of the
 default = "normal"        # free field `priority`; fills `add` without --priority
 
+[stages]                  # optional; replaces the built-in seven stages
+values = ["inbox", "prioritized", "build", "commit", "done"]   # ordered, required
+initial = "inbox"         # stage of a new ticket (default: first value)
+terminal = ["done"]       # satisfy `depends`; `next` skips them
+claim = ["build", "commit"]   # a claim is only valid here (required)
+cancelled = "cancelled"   # optional reserved stage, always valid, terminal
+
 [transitions.agent]       # legacy command policy; not an integrity rule
 open = ["in-progress", "blocked", "needs-input"]
 in-progress = ["review", "blocked", "needs-input", "open"]
@@ -211,6 +274,16 @@ normal) applies without a `[priorities]` table (ADR-0005). The lease is
 the size value raised to `lease_min` and capped at `lease_max`; a claim
 made before a tightening keeps its old lease until the next claim or
 extend, and `validate` then reports `lease-too-long`.
+
+Without `[stages]` the stages are `open, in-progress, review, done, blocked,
+needs-input, cancelled` and `in-progress` means claimed. With it, a stage name
+is a lower-case word of letters, digits and inner dashes, every stage must be
+listed in `values` (except `cancelled`), a claim moves a ticket into the first
+`claim` stage when it is elsewhere, an unclaimed ticket may sit in a claim
+stage (that is what `next` offers), `release` needs `--stage`, and the default
+agent table lets an agent move between non-terminal stages only. `validate`
+checks the current snapshot against the list but not the stage names inside
+replayed history (ADR-0011).
 
 `grace` is deliberately not configurable: it is part of the fencing
 model and changes only with an ADR. See ADR-0004 for the decisions
