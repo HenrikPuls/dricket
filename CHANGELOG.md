@@ -6,7 +6,7 @@ and the project follows [Semantic Versioning](https://semver.org/). Versions
 below 1.0.0 may change the on-disk format and the CLI; such changes are always
 listed here.
 
-## [Unreleased]
+## [0.5.0] - 2026-11-04
 
 ### Added
 - `dk setup-agent` installs the embedded dricket Agent Skill at
