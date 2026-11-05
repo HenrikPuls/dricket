@@ -51,8 +51,49 @@ top-level CHANGELOG.md and are written at release time from this file.
   (flag > DK_PROJECT > bindings > single registered prefix);
   `branch` key in dricket.toml; `add -p` is now the prefix, parent
   is `--parent` — handed over 2026-11-03
+- Call trace and reads without the private working copy (R-26, R-27;
+  owner requirements 29 and 30 of the Drey list, ADR-0014): `dk
+  --trace` / `DK_TRACE=1`; `show` 16 → 4 git processes, `ls` 107 → 5,
+  parallel reads no longer fail — handed over 2026-11-05
 
 ## Shipped
+
+### R-27 Reads without the private working copy (2026-11-05)
+Owner requirement 30 of the Drey list: a read command costs repository discovery
+(one `rev-parse` per level, levels below the work-tree root skipped), the
+config read, the origin lookup and its own read, and nothing else. A local
+store is read straight from `refs/heads/<branch>` (`git show`; `ls`, `lint`,
+`leases` and `next` read all tickets with one `ls-tree` and one `cat-file
+--batch`); remote and bare stores keep fetch into `FETCH_HEAD` and lose only
+`reset --hard` and `clean`. The private working copy of a local store is
+created by the first write, not by `Open`. `check-ref-format` runs in
+process (differential test against git). `validate` and `inbox` pin one
+commit because they read in several steps. Measured on a 91-ticket local
+store, Windows: `show` 16 → 4 processes (0.38 → 0.14 s), `ls --json` 107 → 5
+(2.1 → 0.16 s), `put --claim --if-version` 26 → 22 (0.62 → 0.56 s). Also
+removes the cause of the parallel-read failure (`reset to local head: exit
+status 128`, Drey requirement 26). Writes are unchanged. ADR-0014. Tests:
+process budget of `show` and `ls` (independent of ticket count), reads create
+no worktree, `ReadAll` equals `ReadFile` for odd content in two processes,
+missing branch reads empty, read-write-read, `Pin`, probe-driven discovery,
+branch-name validator against git, and a parallel-read test with real
+processes that fails on v0.6.0; stdout and exit codes of every read command
+were also compared byte for byte between v0.6.0 and this build on the
+91-ticket store.
+
+### R-26 `dk --trace` (2026-11-05)
+Owner requirement 29 of the Drey list. `dk --trace` or `DK_TRACE=1` prints the
+steps of a call on stderr (discovery, open, refresh, reads, each write
+attempt's refresh, check and mutate, commit, publish, backoff) with their
+duration and every git process with arguments and run time, ending in `git:
+N processes, X ms of Y ms`; with `--json` one JSON object
+(`trace_schema_version`, `steps`, `git_processes`, `git_ms`, `total_ms`) on
+stderr. Stdout and exit codes are identical with and without it; commit
+messages, search patterns and URL credentials are redacted. Tests:
+recorder unit tests (steps, nesting, exit codes, redaction, text and JSON
+form), golden test that fourteen read invocations print the same bytes and
+exit the same with `--trace` and `DK_TRACE=1`, JSON form on stderr, write
+phases, no leak of titles.
 
 ### Windows CI: path identity instead of path strings (2026-11-04)
 The Windows job added with R-13 failed on the hosted runner, whose temp

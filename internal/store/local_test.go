@@ -40,6 +40,12 @@ func TestLocalStoreUsesLinkedWorktreeAndSnapshot(t *testing.T) {
 	if st.headRev != "HEAD" {
 		t.Errorf("headRev = %q; want HEAD", st.headRev)
 	}
+	if _, err := os.Stat(st.Dir()); err == nil {
+		t.Errorf("Open created the private worktree %s; only a write may", st.Dir())
+	}
+	if err := st.ensurePrivate(ctx); err != nil {
+		t.Fatalf("ensurePrivate: %v", err)
+	}
 	if got := strings.TrimSpace(runGit(t, st.Dir(), "rev-parse", "--abbrev-ref", "HEAD")); got != "HEAD" {
 		t.Errorf("private worktree is attached to branch %q; want detached HEAD", got)
 	}
@@ -51,8 +57,11 @@ func TestLocalStoreUsesLinkedWorktreeAndSnapshot(t *testing.T) {
 	if err := st.Refresh(ctx); err != nil {
 		t.Fatalf("refresh: %v", err)
 	}
-	if st.baseSHA != base {
-		t.Errorf("baseSHA = %q; want %q", st.baseSHA, base)
+	if err := st.Pin(ctx); err != nil {
+		t.Fatalf("pin: %v", err)
+	}
+	if st.readRev() != base {
+		t.Errorf("pinned head = %q; want %q", st.readRev(), base)
 	}
 	commitVisibleFile(t, dir, "base.txt", "after\n", "advance public ref")
 	got, err := st.ReadFile(ctx, "base.txt")

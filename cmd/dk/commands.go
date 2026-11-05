@@ -96,6 +96,7 @@ func (e *env) svc() (*service.Service, *cliError) {
 		return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 	}
 	opts.Profile = prof
+	opts.Probe = e.probe
 	// Runner profiles carry their own key: nothing may leak in from the
 	// user's global git configuration (docs/CONCEPT.md, profiles).
 	opts.IsolateGitConfig = prof.SSHKey != ""

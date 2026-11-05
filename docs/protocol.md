@@ -89,11 +89,32 @@ deletes one. Adding a comment does not change the ticket's `rev`.
   matches has lost the claim (exit 13).
 - Blob SHA is storage metadata, not a second public version token.
 
+## Read protocol
+
+A read command never writes and never touches the private working copy
+(ADR-0014). Discovery asks git once per level (`rev-parse --is-inside-work-tree
+--show-toplevel`), reads `dricket.toml` from `main` and looks up `origin`.
+
+- A local non-bare store reads `refs/heads/<branch>` of the repository itself:
+  `git show <ref>:<path>` for one ticket, one `ls-tree -r -z` plus one
+  `cat-file --batch` for all tickets (a consistent listing: the blob ids come
+  from one tree). `validate` and `inbox` pin the branch to a commit first
+  (`rev-parse`) because they read in several steps.
+- A remote or bare store fetches the ticket branch into `FETCH_HEAD`, then
+  reads `FETCH_HEAD`; it does not reset or clean the clone.
+- A missing ticket branch reads as an empty store, as before.
+
+`dk --trace` (or `DK_TRACE=1`) writes the steps and git processes of the call
+to stderr; with `--json` as one JSON object. Stdout and exit codes are the same
+with and without it.
+
 ## Write protocol
 
 Every write publishes one commit on the `tickets` branch. Never a rebase. The
 common loop is:
 
+0. A local store's private working copy is created by the first write of the
+   process (a read never needs it).
 1. Refresh the ticket head. Remote and bare stores fetch it; a local non-bare
    store resolves its local ref to a commit SHA.
 2. Reset only the private working copy to that immutable base. Local attempts

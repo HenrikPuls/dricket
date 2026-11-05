@@ -80,7 +80,8 @@ flowchart TB
 | ticket | Ticket model and structural transition invariants | `internal/ticket/` |
 | config | dricket.toml: lease limits, admins, quota, command policies | `internal/config/` |
 | frontmatter | Strict parser for the flat front matter, lint | `internal/frontmatter/` |
-| store | Git subprocess, CAS loop, private store and safe user workspace | `internal/store/` |
+| store | Git subprocess, CAS loop, private store (created by the first write), direct reads and safe user workspace | `internal/store/` |
+| trace | Opt-in recorder of steps and git processes behind `--trace` | `internal/trace/` |
 | validate | Structural and path rules over snapshots and commit diffs | `internal/validate/` |
 | profile | Git identity and credential source per profile | `internal/profile/` |
 
@@ -143,6 +144,31 @@ precondition re-reads the fresh ticket on every attempt, checks who may write
 above: after the exact-base and owner checks pass, it clears the claim fields
 and applies the release transition policy in the same commit.
 
+### 6.4 Read
+
+```mermaid
+sequenceDiagram
+  participant C as dk (read command)
+  participant G as git (installed)
+  participant S as Store repository
+  C->>G: rev-parse --is-inside-work-tree --show-toplevel
+  C->>G: show refs/heads/main:dricket.toml (branch name)
+  C->>G: remote get-url origin (local or remote store)
+  alt local store
+    C->>G: show refs/heads/ticket-branch:path (ls: ls-tree + cat-file --batch)
+    G->>S: read objects, no index, no private working copy
+  else remote or bare store
+    C->>G: fetch origin ticket-branch (FETCH_HEAD)
+    C->>G: show FETCH_HEAD:path
+  end
+```
+
+A read costs discovery, the config read, the origin lookup and its own read:
+four git processes for `show`, five for `ls` however many tickets exist. It
+never resets, cleans or locks the private working copy, so parallel reads are
+safe. `dk --trace` (or `DK_TRACE=1`) prints each step and every git process on
+stderr (ADR-0014).
+
 ## 7. Deployment view
 
 One static binary per platform (`dricket`, alias `dk`), built by GoReleaser from
@@ -167,8 +193,11 @@ Dependabot keeps the pins current.
 - **Configuration:** flags, then environment, then project, then user file;
   profiles live in the user file outside any repository.
 - **Consistency:** accepted remote pushes or local fast-forward ref updates on
-  one ref are ordered; reads are immutable snapshots; no cross-branch,
-  cross-repository or external atomicity.
+  one ref are ordered; a write reads an immutable snapshot (the private
+  `HEAD`); a read of a local store takes each git read atomically from the
+  live ticket ref and pins one commit only where it reads in several steps
+  (`validate`, `inbox`); no cross-branch, cross-repository or external
+  atomicity.
 - **Security:** repository writers are trusted collaborators. Ticket text is
   untrusted; no shell strings; ref names checked; size limits; host branch
   rights. Validation proves structural integrity, not actor truthfulness.
@@ -178,6 +207,9 @@ Dependabot keeps the pins current.
   `setup-agent` installs it at project scope without network access and never
   overwrites a modified skill. `dk guide` remains the runtime reference.
 - **Logging:** stderr messages only; no telemetry; no user content in logs.
+  `dk --trace` / `DK_TRACE=1` adds a step and git-process report on stderr
+  (JSON with `--json`); commit messages, search patterns and URL credentials
+  are redacted in it, and stdout and exit codes do not change.
 - **Testing:** unit tests for parser, lint and structural transitions;
   exit-code and JSON contract tests; real multi-process concurrency tests;
   whole-file editing, comment and unknown-push regressions; front-matter
@@ -201,6 +233,7 @@ Index only; details in `docs/adr/`.
 | [0011](adr/0011-extension-fields-stages-put-move.md) | Extension fields, configurable stages, whole-ticket put and move | accepted |
 | [0012](adr/0012-one-step-change-under-a-short-claim.md) | One-step change under a short claim | accepted |
 | [0013](adr/0013-strict-write-surface.md) | Strict write surface — put --claim and commit --release | accepted |
+| [0014](adr/0014-trace-and-private-copy-free-reads.md) | Call trace and reads without the private working copy | accepted |
 
 ## 10. Quality requirements
 

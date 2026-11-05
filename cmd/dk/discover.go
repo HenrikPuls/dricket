@@ -14,6 +14,7 @@ import (
 	"github.com/HenrikPuls/dricket/internal/service"
 	"github.com/HenrikPuls/dricket/internal/store"
 	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/HenrikPuls/dricket/internal/trace"
 )
 
 // bindings is one `.dricket` file: local bindings for the directory,
@@ -73,6 +74,10 @@ func (e *env) resolveProject(ctx context.Context) *cliError {
 		return e.projErr
 	}
 	e.projDone = true
+	defer trace.Begin("discover store")()
+	if e.probe == nil {
+		e.probe = store.NewProbe()
+	}
 
 	abs, err := filepath.Abs(".")
 	if err != nil {
@@ -91,7 +96,7 @@ func (e *env) resolveProject(ctx context.Context) *cliError {
 			}
 		}
 		if e.projSpec == "" {
-			if d, ok, derr := store.InspectRoot(ctx, level); derr == nil && ok {
+			if d, ok, derr := store.InspectRootWith(ctx, e.probe, level); derr == nil && ok {
 				e.projSpec = d.Spec()
 				e.projSpecSrc = filepath.Join(d.Dir, "dricket.toml") + " (store root)"
 			}

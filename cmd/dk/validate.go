@@ -38,6 +38,9 @@ func runValidate(e *env, args []string) (any, *cliError) {
 		if err := s.Store.Refresh(ctx); err != nil {
 			return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
 		}
+		if err := s.Store.Pin(ctx); err != nil {
+			return nil, &cliError{code: exitError, kind: "error", msg: err.Error()}
+		}
 		readFile := func(path string) (string, error) { return s.Store.ReadFile(ctx, path) }
 		findings, err := validate.Trailers(ctx, validate.ReadTicketFromStore(readFile), ".", trailers)
 		if err != nil {

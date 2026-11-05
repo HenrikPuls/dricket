@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/HenrikPuls/dricket/internal/trace"
 )
 
 // Workspace is a user-owned ticket checkout. Unlike the private store, it
@@ -55,7 +57,7 @@ func (w *Workspace) RemoteBranch(ctx context.Context) (string, string, error) {
 func (w *Workspace) git(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- fixed executable, argument list, validated paths
 	cmd.Dir = w.dir
-	out, err := cmd.CombinedOutput()
+	out, err := trace.CombinedOutput(cmd)
 	return string(out), err
 }
 

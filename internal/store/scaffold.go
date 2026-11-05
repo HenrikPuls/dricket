@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/HenrikPuls/dricket/internal/trace"
 )
 
 // Init sets up a ticket store the way `git init` sets up a repository:
@@ -174,6 +176,6 @@ func runGitEnv(ctx context.Context, dir string, opts Options, args ...string) (s
 	cmd := exec.CommandContext(ctx, "git", full...) // #nosec G204 -- tool-built constants, no user input in args
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), opts.Profile.Env("")...)
-	out, err := cmd.CombinedOutput()
+	out, err := trace.CombinedOutput(cmd)
 	return string(out), err
 }

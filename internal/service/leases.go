@@ -215,7 +215,7 @@ func (s *Service) Leases(ctx context.Context, f LeasesFilter) ([]LeaseInfo, erro
 	if err := s.Store.Refresh(ctx); err != nil {
 		return nil, wrapRead(err)
 	}
-	paths, err := s.Store.List(ctx, "tickets/")
+	files, err := s.Store.ReadAll(ctx, "tickets/", "/ticket.md")
 	if err != nil {
 		return nil, wrapRead(err)
 	}
@@ -225,15 +225,9 @@ func (s *Service) Leases(ctx context.Context, f LeasesFilter) ([]LeaseInfo, erro
 	}
 	now := s.Now()
 	var out []LeaseInfo
-	for _, p := range paths {
-		if !strings.HasSuffix(p, "/ticket.md") {
-			continue
-		}
-		content, err := s.Store.ReadFile(ctx, p)
-		if err != nil {
-			continue
-		}
-		doc, err := frontmatter.Parse(content)
+	for _, file := range files {
+		p := file.Path
+		doc, err := frontmatter.Parse(file.Content)
 		if err != nil {
 			continue
 		}
@@ -334,6 +328,9 @@ func (s *Service) Inbox(ctx context.Context, id string) (InboxResult, error) {
 		return InboxResult{}, err
 	}
 	if err := s.Store.Refresh(ctx); err != nil {
+		return InboxResult{}, wrapRead(err)
+	}
+	if err := s.Store.Pin(ctx); err != nil { // ticket and comments from one state
 		return InboxResult{}, wrapRead(err)
 	}
 	content, err := s.Store.ReadFile(ctx, path)

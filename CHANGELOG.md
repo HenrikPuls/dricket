@@ -6,6 +6,26 @@ and the project follows [Semantic Versioning](https://semver.org/). Versions
 below 1.0.0 may change the on-disk format and the CLI; such changes are always
 listed here.
 
+## [0.6.1] - 2026-11-05
+
+### Added
+- `dk --trace` / `DK_TRACE=1`: prints the steps of a call and every git
+  process it starts (arguments, run time) on stderr, ending in a summary such
+  as `git: 4 processes, 82 ms of 83 ms`; with `--json` one JSON object on
+  stderr. Stdout and exit codes do not change. Commit messages, search
+  patterns and URL credentials are redacted (ADR-0014).
+
+### Changed
+- Read commands no longer touch the private working copy: on a local store
+  `dk show` starts 4 git processes instead of 16 and `dk ls --json` 5 instead
+  of 107; a remote store keeps its fetch and loses only `reset` and `clean`.
+  Parallel reads no longer fail with `reset to local head: exit status 128`.
+  The private working copy of a local store is created by the first write.
+  Writes, claims, epoch fencing and the compare-and-set on the ticket ref are
+  unchanged; stdout, JSON and exit codes are byte-identical (ADR-0014).
+- A command that reads in several steps can see two successive heads when
+  another process publishes in between; `validate` and `inbox` pin one commit.
+
 ## [0.6.0] - 2026-11-04
 
 ### Added

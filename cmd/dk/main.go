@@ -15,8 +15,11 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/HenrikPuls/dricket/internal/service"
+	"github.com/HenrikPuls/dricket/internal/store"
+	"github.com/HenrikPuls/dricket/internal/trace"
 )
 
 // jsonSchemaVersion is the version of the CLI JSON envelope. It is
@@ -62,9 +65,11 @@ type env struct {
 	stdout   io.Writer
 	stderr   io.Writer
 	json     bool
+	trace    bool
 	store    string
 	profile  string
 	svcCache *service.Service
+	probe    *store.Probe // repository facts found by discovery, shared with store.Open
 
 	// Project resolution (git-like walk-up), computed once per process.
 	projMu        sync.Mutex
@@ -128,8 +133,23 @@ func main() {
 }
 
 func run(args []string) int {
+	start := time.Now()
 	e := &env{stdout: stdout, stderr: stderr}
+	// The trace report is written to stderr only, after the command ended,
+	// so stdout and the exit code are the same with and without it (ADR-0014).
+	defer func() {
+		if e.trace || trace.EnvEnabled() {
+			trace.Write(e.stderr, e.json)
+		}
+		trace.Disable()
+	}()
+	if trace.EnvEnabled() {
+		trace.Enable(start)
+	}
 	rest, data, err := parseGlobals(e, args)
+	if e.trace && !trace.Enabled() {
+		trace.Enable(start)
+	}
 	if err != nil {
 		return e.fail(err)
 	}
@@ -224,6 +244,8 @@ func parseGlobals(e *env, args []string) ([]string, any, *cliError) {
 		switch {
 		case a == "--json":
 			e.json = true
+		case a == "--trace":
+			e.trace = true
 		case a == "--store" || a == "--profile":
 			if i+1 >= len(args) {
 				return nil, nil, usageError("%s requires a value", a)

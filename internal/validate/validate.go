@@ -68,6 +68,9 @@ func Store(ctx context.Context, st *store.Store) ([]Finding, error) {
 	if err := st.Refresh(ctx); err != nil {
 		return nil, fmt.Errorf("refresh: %w", err)
 	}
+	if err := st.Pin(ctx); err != nil { // several reads below: one state
+		return nil, fmt.Errorf("pin: %w", err)
+	}
 	r := &report{}
 
 	cfg := loadConfig(ctx, st, r)

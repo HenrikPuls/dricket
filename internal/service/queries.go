@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/HenrikPuls/dricket/internal/frontmatter"
+	"github.com/HenrikPuls/dricket/internal/store"
 	"github.com/HenrikPuls/dricket/internal/ticket"
 )
 
@@ -38,7 +39,7 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]ListItem, []string,
 	if err := s.Store.Refresh(ctx); err != nil {
 		return nil, nil, wrapRead(err)
 	}
-	paths, err := s.Store.List(ctx, "tickets/")
+	files, err := s.Store.ReadAll(ctx, "tickets/", "/ticket.md")
 	if err != nil {
 		return nil, nil, wrapRead(err)
 	}
@@ -48,20 +49,14 @@ func (s *Service) List(ctx context.Context, f ListFilter) ([]ListItem, []string,
 	}
 	var items []ListItem
 	var warnings []string
-	for _, p := range paths {
-		if !strings.HasSuffix(p, "/ticket.md") {
-			continue
-		}
+	for _, file := range files {
+		p, content := file.Path, file.Content
 		prefix, _, serr := splitID(dirID(p))
 		if serr != nil {
 			warnings = append(warnings, fmt.Sprintf("%s: %v", p, serr))
 			continue
 		}
 		if f.Prefix != "" && prefix != strings.ToLower(f.Prefix) {
-			continue
-		}
-		content, err := s.Store.ReadFile(ctx, p)
-		if err != nil {
 			continue
 		}
 		doc, perr := frontmatter.Parse(content)
@@ -145,33 +140,34 @@ func (s *Service) Lint(ctx context.Context, id string) ([]LintResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	var paths []string
+	var files []store.FileContent
+	var missing string // single-ticket lint: the path that was not found
 	if id != "" {
 		id = strings.ToLower(strings.TrimSpace(id))
 		path, err := PathFor(id)
 		if err != nil {
 			return nil, err
 		}
-		paths = []string{path}
+		content, rerr := s.Store.ReadFile(ctx, path)
+		if rerr != nil {
+			missing = path
+		} else {
+			files = []store.FileContent{{Path: path, Content: content}}
+		}
 	} else {
 		var err error
-		paths, err = s.Store.List(ctx, "tickets/")
+		files, err = s.Store.ReadAll(ctx, "tickets/", "/ticket.md")
 		if err != nil {
 			return nil, wrapRead(err)
 		}
 	}
 	var results []LintResult
-	for _, p := range paths {
-		if !strings.HasSuffix(p, "/ticket.md") {
-			continue
-		}
+	if missing != "" {
+		results = append(results, LintResult{ID: dirID(missing), Findings: []string{fmt.Sprintf("%s: not found", missing)}})
+	}
+	for _, file := range files {
+		p, content := file.Path, file.Content
 		res := LintResult{ID: dirID(p)}
-		content, err := s.Store.ReadFile(ctx, p)
-		if err != nil {
-			res.Findings = append(res.Findings, fmt.Sprintf("%s: not found", p))
-			results = append(results, res)
-			continue
-		}
 		doc, err := frontmatter.Parse(content)
 		if err != nil {
 			res.Findings = append(res.Findings, err.Error())

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/HenrikPuls/dricket/internal/trace"
 	"math/rand/v2"
 	"os"
 	"os/exec"
@@ -121,14 +122,20 @@ func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 	ctx, cancel := context.WithTimeout(ctx, s.opts.TotalTimeout)
 	defer cancel()
 
+	if err := s.ensurePrivate(ctx); err != nil {
+		return err
+	}
+	defer trace.Phase("")
 	var werr *WriteError
 	for attempt := 1; attempt <= s.opts.MaxAttempts; attempt++ {
 		werr = &WriteError{Attempts: attempt, PushReject: attempt - 1}
+		trace.Phase(fmt.Sprintf("attempt %d: refresh private copy", attempt))
 		if err := s.refresh(ctx); err != nil {
 			werr.Outcome = PushFailed
 			werr.Err = err
 			return werr
 		}
+		trace.Phase(fmt.Sprintf("attempt %d: check and mutate", attempt))
 		if spec.Check != nil {
 			if err := spec.Check(s.head(ctx)); err != nil {
 				werr.Outcome = PreconditionFailed
@@ -149,6 +156,7 @@ func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 			werr.Err = errors.New("nothing changed")
 			return werr
 		}
+		trace.Phase(fmt.Sprintf("attempt %d: commit", attempt))
 		addArgs := append([]string{"add", "--"}, wt.written...)
 		if _, stderr, err := s.git(ctx, addArgs...); err != nil {
 			werr.Outcome = MutationFailed
@@ -173,6 +181,7 @@ func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 			return werr
 		}
 		werr.Commit = commit
+		trace.Phase(fmt.Sprintf("attempt %d: publish", attempt))
 		var publishErr error
 		publishOutput := ""
 		retryable := false
@@ -229,6 +238,7 @@ func (s *Store) Write(ctx context.Context, spec WriteSpec) error {
 			werr.Outcome = Timeout
 			return werr
 		}
+		trace.Phase(fmt.Sprintf("attempt %d: backoff wait", attempt))
 		s.sleep(s.backoff(attempt))
 	}
 	return &WriteError{Outcome: Timeout}
