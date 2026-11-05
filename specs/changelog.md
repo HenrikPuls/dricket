@@ -55,8 +55,36 @@ top-level CHANGELOG.md and are written at release time from this file.
   owner requirements 29 and 30 of the Drey list, ADR-0014): `dk
   --trace` / `DK_TRACE=1`; `show` 16 → 4 git processes, `ls` 107 → 5,
   parallel reads no longer fail — handed over 2026-11-05
+- Windows long paths and a valid default config with custom stages (R-30,
+  R-31, owner requests; Drey R-27): git calls carry `core.longpaths=true`;
+  `dk init` no longer writes `[transitions.agent]` — handed over 2026-11-05
 
 ## Shipped
+
+### R-30 Windows long paths (2026-11-05)
+
+- Behaviour: every git call of dk (store, scaffold, workspace) passes
+  `-c core.longpaths=true`. Reproduced on Windows with a deep `DK_DATA_DIR`
+  (`store: init: exit status 128`, git: `cannot write keep file ... Filename
+  too long`, also for `add local worktree`). The flag fixes the window where
+  the working copy directory itself is below MAX_PATH (data dir up to about
+  170-190 characters) but git's files below it are not. It does not fix longer
+  paths: git cannot change into a directory over about 260 characters at all
+  (`cannot change to ...: Filename too long`). Keep `DK_DATA_DIR` and local
+  store paths short (README).
+- No protocol, on-disk, exit-code or JSON change.
+- Tests: `TestCLILongDataDirOnWindows` (Windows only, neutral git config; fails
+  without the flag, passes with it).
+
+### R-31 `dk init` stays valid with custom `[stages]` (2026-11-05)
+
+- Behaviour: the scaffolded `dricket.toml` no longer contains an active
+  `[transitions.agent]` table (it named the built-in stages, so adding
+  `[stages]` made every call fail with `config-invalid`). The table equalled
+  the built-in default, so stores without `[stages]` behave exactly as before;
+  a comment explains how to customise. Existing stores are not touched.
+- Tests: `TestScaffoldConfigAcceptsCustomStages` (init output parses, and
+  parses with a custom `[stages]` table appended; red before the change).
 
 ### R-27 Reads without the private working copy (2026-11-05)
 Owner requirement 30 of the Drey list: a read command costs repository discovery

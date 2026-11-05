@@ -56,12 +56,13 @@ secret_scan = true           # refuse likely credentials before they land
 values = ["critical", "high", "normal", "low"]
 default = "normal"
 
-[transitions.agent]          # agent stage moves; human/admin may move anything
-open = ["in-progress", "blocked", "needs-input"]
-in-progress = ["review", "blocked", "needs-input", "open"]
-blocked = ["in-progress", "open"]
-needs-input = ["in-progress", "open"]
-review = ["in-progress"]
+# [transitions.agent] is legacy and left out on purpose: the built-in rules are the
+# default, and a table naming the built-in stages would make the file invalid as
+# soon as a custom [stages] table is added. Add one only for your own stage names.
+#   [stages]
+#   values = ["inbox", "build", "done"]
+#   terminal = ["done"]
+#   claim = ["build"]
 `, branch),
 		"prefixes.toml": prefixesToml,
 		".gitattributes": `# Ticket files are plain text and compared byte by byte; normalize

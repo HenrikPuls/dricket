@@ -172,7 +172,7 @@ func writeScaffold(dir string, files map[string]string) error {
 // environment. Arguments are a list; no shell is involved. autocrlf is
 // pinned off so the scaffold lands byte-identical everywhere.
 func runGitEnv(ctx context.Context, dir string, opts Options, args ...string) (string, error) {
-	full := append([]string{"-c", "core.autocrlf=false"}, args...)
+	full := append([]string{"-c", "core.autocrlf=false", "-c", "core.longpaths=true"}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...) // #nosec G204 -- tool-built constants, no user input in args
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), opts.Profile.Env("")...)

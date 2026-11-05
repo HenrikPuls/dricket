@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/HenrikPuls/dricket/internal/config"
 	agentskills "github.com/HenrikPuls/dricket/skills"
 )
 
@@ -200,4 +201,28 @@ func setupBareCLISilent(t *testing.T) string {
 	t.Setenv("DK_STORE", bare+"#tickets")
 	t.Setenv("DK_DATA_DIR", t.TempDir())
 	return bare
+}
+
+// R-27: the generated dricket.toml must stay valid when a [stages] table is
+// added, and must still configure the built-in stage set without one.
+func TestScaffoldConfigAcceptsCustomStages(t *testing.T) {
+	toml := scaffoldFiles("tickets", "app")["dricket.toml"]
+	if _, err := config.Parse([]byte(toml)); err != nil {
+		t.Fatalf("default scaffold does not parse: %v", err)
+	}
+	custom := toml + `
+[stages]
+values = ["inbox", "prioritized", "build", "commit", "done"]
+initial = "inbox"
+terminal = ["done"]
+claim = ["build", "commit"]
+cancelled = "cancelled"
+`
+	cfg, err := config.Parse([]byte(custom))
+	if err != nil {
+		t.Fatalf("scaffold plus custom [stages] is invalid: %v", err)
+	}
+	if got := cfg.Stages.Initial; got != "inbox" {
+		t.Errorf("initial stage = %q; want inbox", got)
+	}
 }

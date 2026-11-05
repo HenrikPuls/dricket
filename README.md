@@ -113,6 +113,11 @@ Make sure the Go bin directory (`go env GOPATH` + `/bin`, on Windows
 `%USERPROFILE%\go\bin`) is on your `PATH`. `git` (2.32 or newer) must be
 installed.
 
+On Windows, keep `DK_DATA_DIR` (and the path of a local store) short, well under
+about 190 characters: git cannot work in a directory beyond the 260-character
+path limit, and dk's private working copies add about 90 characters to the data
+directory.
+
 Set up a local store with one project prefix and work directly in its ticket
 checkout:
 

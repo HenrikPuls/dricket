@@ -250,10 +250,13 @@ func (s *Store) execGit(ctx context.Context, args ...string) (string, string, er
 }
 
 func (s *Store) execGitIn(ctx context.Context, dir string, stdin io.Reader, args ...string) (string, string, error) {
-	full := append([]string{"-C", dir, "-c", "core.autocrlf=false"}, args...)
+	// core.longpaths lets git on Windows write below paths over MAX_PATH
+	// (deep data dirs); it is a no-op elsewhere.
+	pre := []string{"-C", dir, "-c", "core.autocrlf=false", "-c", "core.longpaths=true"}
 	if s.localDir != "" && s.hooksPath != "" {
-		full = append(full[:4], append([]string{"-c", "core.hooksPath=" + s.hooksPath}, full[4:]...)...)
+		pre = append(pre, "-c", "core.hooksPath="+s.hooksPath)
 	}
+	full := append(pre, args...)
 	cmd := exec.CommandContext(ctx, "git", full...) // #nosec G204 -- args are tool-built constants and validated paths (ADR-0002)
 	cmd.Env = append(os.Environ(), s.opts.Profile.Env(s.gitConfigGlobal)...)
 	cmd.Stdin = stdin
