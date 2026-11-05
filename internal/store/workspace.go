@@ -55,7 +55,7 @@ func (w *Workspace) RemoteBranch(ctx context.Context) (string, string, error) {
 }
 
 func (w *Workspace) git(ctx context.Context, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...) // #nosec G204 -- fixed executable, argument list, validated paths
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "core.longpaths=true"}, args...)...) // #nosec G204 -- fixed executable, argument list, validated paths
 	cmd.Dir = w.dir
 	out, err := trace.CombinedOutput(cmd)
 	return string(out), err
