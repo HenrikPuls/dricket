@@ -101,10 +101,10 @@ type Store struct {
 	gitRunner       gitRunnerFunc
 	gitAt           gitAtFunc
 	sleep           func(time.Duration)
-	hasRef          bool // ticket branch existed at the last refresh
-	privateReady    bool // local private worktree exists (created by the first write)
-	writeMode       bool // reads go through the private worktree HEAD (inside a write)
-	branchChecked   bool // local read mode: hasRef was verified against git
+	hasRef          bool   // ticket branch existed at the last refresh
+	privateReady    bool   // local private worktree exists (created by the first write)
+	writeMode       bool   // reads go through the private worktree HEAD (inside a write)
+	branchChecked   bool   // local read mode: hasRef was verified against git
 	pinned          string // local read mode: commit all reads use after Pin
 	rand            *rand.Rand
 	rngOnce         sync.Once
