@@ -6,6 +6,18 @@ and the project follows [Semantic Versioning](https://semver.org/). Versions
 below 1.0.0 may change the on-disk format and the CLI; such changes are always
 listed here.
 
+## [0.6.2] - 2026-11-05
+
+### Fixed
+- Windows long paths: dk's git calls run with `core.longpaths=true`, so a data
+  or store directory of up to about 190 characters works (before, `fetch` and
+  `worktree add` failed with "Filename too long" from about 156). Beyond that
+  git itself cannot enter the directory; the README now says to keep
+  `DK_DATA_DIR` and local store paths short.
+- `dk init` writes a `dricket.toml` that stays valid with a custom `[stages]`
+  table: the redundant `[transitions.agent]` table (the built-in defaults) is
+  now only a comment. Existing stores are unchanged.
+
 ## [0.6.1] - 2026-11-05
 
 ### Added
