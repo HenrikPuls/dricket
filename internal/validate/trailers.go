@@ -14,6 +14,7 @@ import (
 	"github.com/HenrikPuls/dricket/internal/frontmatter"
 	"github.com/HenrikPuls/dricket/internal/service"
 	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/HenrikPuls/dricket/internal/trace"
 )
 
 // The wrapper writes the trailers Dricket-Ticket, Dricket-Epoch,
@@ -131,7 +132,7 @@ func gitLog(ctx context.Context, dir, gitRange string) ([]logRecord, error) {
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
-	if err := cmd.Run(); err != nil {
+	if err := trace.Run(cmd); err != nil {
 		return nil, fmt.Errorf("git log %s: %s", gitRange, firstLineOf(errb.String()))
 	}
 	var records []logRecord

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"math/rand/v2"
 	"os"
 	"os/exec"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/HenrikPuls/dricket/internal/profile"
+	"github.com/HenrikPuls/dricket/internal/trace"
 )
 
 // Retry starting values from docs/CONCEPT.md; they are options, not
@@ -50,10 +52,13 @@ type Options struct {
 	// surrounding setup. Set for runner profiles with their own
 	// credentials (docs/CONCEPT.md, "Accounts per agent").
 	IsolateGitConfig bool
-	MaxAttempts      int
-	BackoffBase      time.Duration
-	BackoffCap       time.Duration
-	TotalTimeout     time.Duration
+	// Probe shares repository facts found during discovery with Open so the
+	// same question is not asked of git twice in one call; nil means ask.
+	Probe        *Probe
+	MaxAttempts  int
+	BackoffBase  time.Duration
+	BackoffCap   time.Duration
+	TotalTimeout time.Duration
 }
 
 func (o *Options) branch() string {
@@ -97,6 +102,10 @@ type Store struct {
 	gitAt           gitAtFunc
 	sleep           func(time.Duration)
 	hasRef          bool // ticket branch existed at the last refresh
+	privateReady    bool // local private worktree exists (created by the first write)
+	writeMode       bool // reads go through the private worktree HEAD (inside a write)
+	branchChecked   bool // local read mode: hasRef was verified against git
+	pinned          string // local read mode: commit all reads use after Pin
 	rand            *rand.Rand
 	rngOnce         sync.Once
 }
@@ -104,6 +113,7 @@ type Store struct {
 // Open prepares the private working copy for one profile against one
 // remote branch. It never touches the current working directory.
 func Open(ctx context.Context, opts Options) (*Store, error) {
+	defer trace.Begin("open store")()
 	if opts.Remote == "" {
 		return nil, errors.New("store: remote is required")
 	}
@@ -123,34 +133,58 @@ func Open(ctx context.Context, opts Options) (*Store, error) {
 		opts.DataDir = filepath.Join(cache, "dricket")
 	}
 	dir := filepath.Join(opts.DataDir, slug(opts.Remote)+"-"+opts.branch()+"-"+slug(opts.Profile.OwnerID))
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return nil, fmt.Errorf("store: working copy dir: %w", err)
-	}
 
 	s := &Store{opts: opts, dir: dir, headRev: "FETCH_HEAD", gitAt: runGitEnv, sleep: time.Sleep}
-	if localDir, ok := localWorkingRepository(ctx, opts.Remote); ok {
+	if localDir, ok := localWorkingRepository(ctx, opts.Probe, opts.Remote); ok {
+		// A local store is read straight from the repository; the private
+		// worktree is created by the first write (ensurePrivate), so a read
+		// never touches it (ADR-0014).
 		s.localDir = localDir
 		s.headRev = "HEAD"
-		hooks, err := ensureEmptyHooks(opts.DataDir)
-		if err != nil {
-			return nil, err
-		}
-		s.hooksPath = hooks
+	} else if err := os.MkdirAll(dir, 0o750); err != nil {
+		return nil, fmt.Errorf("store: working copy dir: %w", err)
 	}
 	if opts.IsolateGitConfig {
 		// An empty file replaces the user's global git configuration;
 		// the profile's own identity comes from its env (ADR: profiles
 		// share nothing with the surrounding setup).
+		if err := os.MkdirAll(opts.DataDir, 0o750); err != nil {
+			return nil, fmt.Errorf("store: data dir: %w", err)
+		}
 		iso := filepath.Join(opts.DataDir, filepath.Base(dir)+".gitconfig")
 		if err := os.WriteFile(iso, nil, 0o600); err != nil {
 			return nil, fmt.Errorf("store: git config isolation: %w", err)
 		}
 		s.gitConfigGlobal = iso
 	}
-	if err := s.initOnce(ctx); err != nil {
-		return nil, err
+	if s.localDir == "" {
+		if err := s.initOnce(ctx); err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
+}
+
+// ensurePrivate creates the private worktree of a local store on first use.
+// Only writes need it; remote stores prepare their clone in Open.
+func (s *Store) ensurePrivate(ctx context.Context) error {
+	if s.localDir == "" || s.privateReady {
+		return nil
+	}
+	defer trace.Begin("prepare private worktree")()
+	hooks, err := ensureEmptyHooks(s.opts.DataDir)
+	if err != nil {
+		return err
+	}
+	s.hooksPath = hooks
+	if err := os.MkdirAll(s.dir, 0o750); err != nil {
+		return fmt.Errorf("store: working copy dir: %w", err)
+	}
+	if err := s.initLocal(ctx); err != nil {
+		return err
+	}
+	s.privateReady = true
+	return nil
 }
 
 // Dir is the private working copy path (diagnostics, tests).
@@ -176,9 +210,6 @@ func (s *Store) Close() error { return nil }
 
 // initOnce makes the private working copy usable for local CAS or push CAS.
 func (s *Store) initOnce(ctx context.Context) error {
-	if s.localDir != "" {
-		return s.initLocal(ctx)
-	}
 	if _, _, err := s.git(ctx, "rev-parse", "--git-dir"); err == nil {
 		if out, _, err := s.git(ctx, "remote", "get-url", "origin"); err != nil || strings.TrimSpace(out) != s.opts.Remote {
 			if err == nil {
@@ -203,24 +234,78 @@ func (s *Store) initOnce(ctx context.Context) error {
 // git runs one git command in the working copy. Arguments are a list; no
 // shell is involved, and nothing from ticket content reaches them.
 func (s *Store) git(ctx context.Context, args ...string) (string, string, error) {
+	return s.gitIn(ctx, s.dir, nil, args...)
+}
+
+// gitIn runs one git command in dir, optionally feeding stdin.
+func (s *Store) gitIn(ctx context.Context, dir string, stdin io.Reader, args ...string) (string, string, error) {
 	if s.gitRunner != nil {
 		return s.gitRunner(ctx, args...)
 	}
-	return s.execGit(ctx, args...)
+	return s.execGitIn(ctx, dir, stdin, args...)
 }
 
 func (s *Store) execGit(ctx context.Context, args ...string) (string, string, error) {
-	full := append([]string{"-C", s.dir, "-c", "core.autocrlf=false"}, args...)
-	if s.localDir != "" {
+	return s.execGitIn(ctx, s.dir, nil, args...)
+}
+
+func (s *Store) execGitIn(ctx context.Context, dir string, stdin io.Reader, args ...string) (string, string, error) {
+	full := append([]string{"-C", dir, "-c", "core.autocrlf=false"}, args...)
+	if s.localDir != "" && s.hooksPath != "" {
 		full = append(full[:4], append([]string{"-c", "core.hooksPath=" + s.hooksPath}, full[4:]...)...)
 	}
 	cmd := exec.CommandContext(ctx, "git", full...) // #nosec G204 -- args are tool-built constants and validated paths (ADR-0002)
 	cmd.Env = append(os.Environ(), s.opts.Profile.Env(s.gitConfigGlobal)...)
+	cmd.Stdin = stdin
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
-	err := cmd.Run()
+	err := trace.Run(cmd)
 	return out.String(), errb.String(), err
+}
+
+// readGit runs a read-only git command against the repository that holds the
+// current read snapshot: the user's repository for a local store outside a
+// write, the private clone or worktree otherwise.
+func (s *Store) readGit(ctx context.Context, args ...string) (string, string, error) {
+	return s.readGitIn(ctx, nil, args...)
+}
+
+func (s *Store) readGitIn(ctx context.Context, stdin io.Reader, args ...string) (string, string, error) {
+	dir := s.dir
+	if s.localReadMode() {
+		dir = s.localDir
+	}
+	return s.gitIn(ctx, dir, stdin, args...)
+}
+
+// localReadMode reports whether reads bypass the private worktree.
+func (s *Store) localReadMode() bool { return s.localDir != "" && !s.writeMode }
+
+// readRev is the revision reads resolve paths against: the ticket branch
+// itself for a local store outside a write, the pinned head otherwise.
+func (s *Store) readRev() string {
+	if s.localReadMode() {
+		if s.pinned != "" {
+			return s.pinned
+		}
+		return "refs/heads/" + s.opts.branch()
+	}
+	return s.headRev
+}
+
+// verifyBranch settles whether the ticket branch exists after an optimistic
+// local read failed; it costs one process and only runs on a failure path.
+func (s *Store) verifyBranch(ctx context.Context) bool {
+	if !s.localReadMode() {
+		return s.hasRef
+	}
+	if !s.branchChecked {
+		_, _, err := s.readGit(ctx, "rev-parse", "--verify", "--quiet", "refs/heads/"+s.opts.branch()+"^{commit}")
+		s.hasRef = err == nil
+		s.branchChecked = true
+	}
+	return s.hasRef
 }
 
 // ---------------------------------------------------------------- reads --
@@ -228,6 +313,7 @@ func (s *Store) execGit(ctx context.Context, args ...string) (string, string, er
 // fetch refreshes FETCH_HEAD from the remote branch. Missing remote branch
 // is not an error; it leaves the store without a head.
 func (s *Store) fetch(ctx context.Context) error {
+	defer trace.Begin("fetch ticket branch")()
 	_, stderr, err := s.git(ctx, "fetch", "--quiet", "origin", s.opts.branch())
 	switch {
 	case err == nil:
@@ -241,10 +327,49 @@ func (s *Store) fetch(ctx context.Context) error {
 	}
 }
 
-// Refresh brings the private working copy to the selected store head. After
-// it, Has and ReadFile read an immutable snapshot. Read-only commands call this
-// once; the write loop calls it on every attempt.
+// Refresh pins the store head for reading. It never touches a working copy:
+// a local store is read straight from its ticket branch (no process), a
+// remote or bare store fetches and then reads FETCH_HEAD (ADR-0014). Read-only
+// commands call this once; writes use refresh, which also resets the private
+// working copy.
 func (s *Store) Refresh(ctx context.Context) error {
+	defer trace.Begin("refresh head")()
+	s.writeMode = false
+	if s.localDir != "" {
+		s.hasRef = true // optimistic; verifyBranch settles it if a read fails
+		s.branchChecked = false
+		s.pinned = ""
+		return nil
+	}
+	return s.fetch(ctx)
+}
+
+// Pin fixes the local read head to the commit the ticket branch has now, so
+// a command that reads in several steps (validate, inbox) sees one state even
+// while another process publishes. It costs one process. Refresh alone reads
+// the live branch: every single read is atomic, several reads are not pinned.
+// Remote and bare stores are pinned by their fetch already.
+func (s *Store) Pin(ctx context.Context) error {
+	if !s.localReadMode() {
+		return nil
+	}
+	defer trace.Begin("pin head")()
+	out, _, err := s.readGit(ctx, "rev-parse", "--verify", "--quiet", "refs/heads/"+s.opts.branch()+"^{commit}")
+	s.branchChecked = true
+	if err != nil {
+		s.hasRef = false
+		return nil
+	}
+	s.hasRef = true
+	s.pinned = strings.TrimSpace(out)
+	return nil
+}
+
+// refresh prepares one write attempt: the immutable base is the private
+// working copy reset to the current head.
+func (s *Store) refresh(ctx context.Context) error {
+	defer trace.Begin("refresh private copy")()
+	s.writeMode = true
 	if s.localDir != "" {
 		return s.refreshLocal(ctx)
 	}
@@ -263,20 +388,13 @@ func (s *Store) Refresh(ctx context.Context) error {
 	return nil
 }
 
-// refresh is the internal alias used by the write loop.
-func (s *Store) refresh(ctx context.Context) error { return s.Refresh(ctx) }
-
 // Has reports whether a path exists on the current head.
 func (s *Store) Has(ctx context.Context, path string) (bool, error) {
-	spec := fmt.Sprintf("%s:%s", s.headRev, path)
 	if !s.hasRef {
 		return false, nil
 	}
-	_, _, err := s.git(ctx, "cat-file", "-e", spec)
-	if err == nil {
-		return true, nil
-	}
-	return false, nil
+	_, _, err := s.readGit(ctx, "cat-file", "-e", s.readRev()+":"+path)
+	return err == nil, nil
 }
 
 // ReadFile returns a file from the current head.
@@ -284,8 +402,12 @@ func (s *Store) ReadFile(ctx context.Context, path string) (string, error) {
 	if !s.hasRef {
 		return "", fmt.Errorf("%s: %w", path, ErrNoBranch)
 	}
-	out, _, err := s.git(ctx, "show", fmt.Sprintf("%s:%s", s.headRev, path))
+	defer trace.Begin("read " + path)()
+	out, _, err := s.readGit(ctx, "show", s.readRev()+":"+path)
 	if err != nil {
+		if !s.verifyBranch(ctx) {
+			return "", fmt.Errorf("%s: %w", path, ErrNoBranch)
+		}
 		return "", fmt.Errorf("%s: %w", path, ErrNotExist)
 	}
 	return out, nil
@@ -296,12 +418,16 @@ func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
 	if !s.hasRef {
 		return nil, nil
 	}
-	args := []string{"ls-tree", "-r", "--name-only", s.headRev}
+	defer trace.Begin("list " + prefix)()
+	args := []string{"ls-tree", "-r", "--name-only", s.readRev()}
 	if prefix != "" {
 		args = append(args, "--", prefix)
 	}
-	out, _, err := s.git(ctx, args...)
+	out, _, err := s.readGit(ctx, args...)
 	if err != nil {
+		if !s.verifyBranch(ctx) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("ls-tree %s: %w", prefix, err)
 	}
 	var files []string
@@ -313,13 +439,104 @@ func (s *Store) List(ctx context.Context, prefix string) ([]string, error) {
 	return files, nil
 }
 
+// FileContent is one file of a batch read.
+type FileContent struct {
+	Path    string
+	Content string
+}
+
+// ReadAll returns every file under prefix whose path ends in suffix, with
+// its content, from one consistent snapshot of the head: one ls-tree for the
+// blob ids and one `cat-file --batch` for all contents, however many files
+// there are. A missing branch reads as empty, like List.
+func (s *Store) ReadAll(ctx context.Context, prefix, suffix string) ([]FileContent, error) {
+	if !s.hasRef {
+		return nil, nil
+	}
+	if s.gitRunner != nil { // test stubs cannot feed stdin
+		return s.readAllSlow(ctx, prefix, suffix)
+	}
+	defer trace.Begin("read all " + prefix + "*" + suffix)()
+	args := []string{"ls-tree", "-r", "-z", s.readRev()}
+	if prefix != "" {
+		args = append(args, "--", prefix)
+	}
+	out, _, err := s.readGit(ctx, args...)
+	if err != nil {
+		if !s.verifyBranch(ctx) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("ls-tree %s: %w", prefix, err)
+	}
+	var paths []string
+	var request strings.Builder
+	for _, rec := range strings.Split(out, "\x00") {
+		meta, path, ok := strings.Cut(rec, "\t")
+		if !ok || !strings.HasSuffix(path, suffix) {
+			continue
+		}
+		f := strings.Fields(meta) // mode type sha
+		if len(f) != 3 || f[1] != "blob" {
+			continue
+		}
+		paths = append(paths, path)
+		request.WriteString(f[2] + "\n")
+	}
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	batch, stderr, err := s.readGitIn(ctx, strings.NewReader(request.String()), "cat-file", "--batch")
+	if err != nil {
+		return nil, fmt.Errorf("cat-file --batch: %s", firstLine(stderr))
+	}
+	files := make([]FileContent, 0, len(paths))
+	rest := batch
+	for _, path := range paths {
+		nl := strings.IndexByte(rest, '\n')
+		if nl < 0 {
+			return nil, fmt.Errorf("cat-file --batch: truncated output at %s", path)
+		}
+		header := strings.Fields(rest[:nl]) // sha type size, or sha missing
+		if len(header) != 3 || header[1] != "blob" {
+			return nil, fmt.Errorf("cat-file --batch: %s: unexpected %q", path, rest[:nl])
+		}
+		size, perr := strconv.Atoi(header[2])
+		if perr != nil || size < 0 || nl+1+size > len(rest) {
+			return nil, fmt.Errorf("cat-file --batch: bad size for %s", path)
+		}
+		files = append(files, FileContent{Path: path, Content: rest[nl+1 : nl+1+size]})
+		rest = rest[nl+1+size:]
+		rest = strings.TrimPrefix(rest, "\n")
+	}
+	return files, nil
+}
+
+// readAllSlow is ReadAll without batching: List plus one ReadFile per path.
+func (s *Store) readAllSlow(ctx context.Context, prefix, suffix string) ([]FileContent, error) {
+	paths, err := s.List(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	var files []FileContent
+	for _, p := range paths {
+		if !strings.HasSuffix(p, suffix) {
+			continue
+		}
+		content, err := s.ReadFile(ctx, p)
+		if err != nil {
+			continue
+		}
+		files = append(files, FileContent{Path: p, Content: content})
+	}
+	return files, nil
+}
+
 // -------------------------------------------------------------- helpers --
 
-// checkRefName validates a branch name with git itself, as the concept
-// prescribes for every ref that can carry untrusted input.
-func checkRefName(ctx context.Context, name string) error {
-	cmd := exec.CommandContext(ctx, "git", "check-ref-format", "--branch", name) // #nosec G204 -- constant tool, single validated argument
-	if err := cmd.Run(); err != nil {
+// checkRefName validates a branch name in process (see checkBranchName); the
+// context is kept for callers that used to start `git check-ref-format`.
+func checkRefName(_ context.Context, name string) error {
+	if err := checkBranchName(name); err != nil {
 		return errors.New("not a valid branch name")
 	}
 	return nil
@@ -397,7 +614,8 @@ func (s *Store) LastChange(ctx context.Context, path string) (time.Time, bool) {
 	if !s.hasRef {
 		return time.Time{}, false
 	}
-	out, _, err := s.git(ctx, "log", "-1", "--format=%cI", "--", path)
+	defer trace.Begin("last change " + path)()
+	out, _, err := s.readGit(ctx, "log", "-1", "--format=%cI", s.readRev(), "--", path)
 	if err != nil {
 		return time.Time{}, false
 	}
@@ -416,8 +634,12 @@ func (s *Store) LastChange(ctx context.Context, path string) (time.Time, bool) {
 // head would be accepted, without transferring anything. A no-op push
 // cannot fully prove branch-protection rights; callers must say so.
 func (s *Store) PushDryRun(ctx context.Context) error {
+	src := "HEAD"
+	if s.hasRef && !s.writeMode {
+		src = s.headRev // reads no longer move the clone's HEAD
+	}
 	_, stderr, err := s.git(ctx, "push", "--dry-run", "origin",
-		fmt.Sprintf("HEAD:refs/heads/%s", s.opts.branch()))
+		fmt.Sprintf("%s:refs/heads/%s", src, s.opts.branch()))
 	if err != nil {
 		return errors.New(firstLine(stderr))
 	}
@@ -440,7 +662,7 @@ func (s *Store) RecentAdds(ctx context.Context, window time.Duration, author str
 		return 0, nil
 	}
 	since := time.Now().Add(-window).UTC().Format(time.RFC3339)
-	out, stderr, err := s.git(ctx, "log", "--since="+since, "--author="+author,
+	out, stderr, err := s.readGit(ctx, "log", s.readRev(), "--since="+since, "--author="+author,
 		"--diff-filter=A", "--name-only", "--format=", "--", "tickets/")
 	if err != nil {
 		return 0, fmt.Errorf("git log for quota: %s", firstLine(stderr))
@@ -465,6 +687,7 @@ const configRef = "refs/dricket/config"
 // is absent. Local non-bare stores read their main ref directly; remote and
 // bare stores fetch into a private config ref.
 func (s *Store) ConfigFile(ctx context.Context, name string) ([]byte, error) {
+	defer trace.Begin("read config " + name)()
 	if s.localDir != "" {
 		return s.configFileLocal(ctx, name)
 	}
@@ -500,8 +723,12 @@ func (s *Store) Commits(ctx context.Context) ([]string, error) {
 	if !s.hasRef {
 		return nil, nil
 	}
-	out, _, err := s.git(ctx, "log", "--reverse", "--format=%H", "--", "tickets/")
+	defer trace.Begin("list commits")()
+	out, _, err := s.readGit(ctx, "log", "--reverse", "--format=%H", s.readRev(), "--", "tickets/")
 	if err != nil {
+		if !s.verifyBranch(ctx) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("git log: %w", err)
 	}
 	return lines(out), nil
@@ -509,7 +736,7 @@ func (s *Store) Commits(ctx context.Context) ([]string, error) {
 
 // CommitChanges reports what one commit changed.
 func (s *Store) CommitChanges(ctx context.Context, commit string) ([]FileChange, error) {
-	out, _, err := s.git(ctx, "diff-tree", "--no-commit-id", "--name-status", "-r", commit)
+	out, _, err := s.readGit(ctx, "diff-tree", "--no-commit-id", "--name-status", "-r", commit)
 	if err != nil {
 		return nil, fmt.Errorf("diff-tree %s: %w", commit[:min(10, len(commit))], err)
 	}
@@ -526,7 +753,7 @@ func (s *Store) CommitChanges(ctx context.Context, commit string) ([]FileChange,
 // ShowRev returns a file's content at an arbitrary revision
 // (commit, commit^, FETCH_HEAD, ...).
 func (s *Store) ShowRev(ctx context.Context, rev, path string) (string, error) {
-	out, _, err := s.git(ctx, "show", rev+":"+path)
+	out, _, err := s.readGit(ctx, "show", rev+":"+path)
 	if err != nil {
 		return "", err
 	}
@@ -542,9 +769,13 @@ func (s *Store) Grep(ctx context.Context, pattern, prefix string) ([]string, err
 	if !s.hasRef {
 		return nil, nil
 	}
-	args := []string{"grep", "-I", "-n", "-F", "-i", "--", pattern, s.headRev, "--", "tickets/" + prefix}
-	out, stderr, err := s.git(ctx, args...)
+	defer trace.Begin("search")()
+	args := []string{"grep", "-I", "-n", "-F", "-i", "--", pattern, s.readRev(), "--", "tickets/" + prefix}
+	out, stderr, err := s.readGit(ctx, args...)
 	if err != nil {
+		if s.localReadMode() && !s.verifyBranch(ctx) {
+			return nil, nil
+		}
 		if out == "" && strings.TrimSpace(stderr) == "" {
 			return nil, nil // git grep exits 1 when nothing matched
 		}

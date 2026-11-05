@@ -16,7 +16,7 @@ import (
 	"strings"
 )
 
-func localWorkingRepository(ctx context.Context, remote string) (string, bool) {
+func localWorkingRepository(ctx context.Context, probe *Probe, remote string) (string, bool) {
 	if strings.Contains(remote, "://") || strings.HasPrefix(remote, "git@") {
 		return "", false
 	}
@@ -24,15 +24,17 @@ func localWorkingRepository(ctx context.Context, remote string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	out, err := runGitEnv(ctx, abs, Options{}, "rev-parse", "--is-bare-repository")
-	if err != nil || strings.TrimSpace(out) != "false" {
+	if top, ok := probe.root(abs); ok { // discovery already asked git
+		return top, true
+	}
+	// One call answers both questions; a bare repository has no work tree,
+	// so --show-toplevel fails and the call reads as "not a working repo".
+	out, err := runGitEnv(ctx, abs, Options{}, "rev-parse", "--is-bare-repository", "--show-toplevel")
+	facts := lines(out)
+	if err != nil || len(facts) != 2 || facts[0] != "false" {
 		return "", false
 	}
-	root, err := runGitEnv(ctx, abs, Options{}, "rev-parse", "--show-toplevel")
-	if err != nil || strings.TrimSpace(root) == "" {
-		return "", false
-	}
-	return filepath.Clean(strings.TrimSpace(root)), true
+	return filepath.Clean(facts[1]), true
 }
 
 func (s *Store) initLocal(ctx context.Context) error {
@@ -266,7 +268,7 @@ func (s *Store) reconcileLocal(ctx context.Context, candidate string) (bool, err
 }
 
 func (s *Store) configFileLocal(ctx context.Context, name string) ([]byte, error) {
-	out, _, err := s.git(ctx, "show", "refs/heads/main:"+name)
+	out, _, err := s.readGit(ctx, "show", "refs/heads/main:"+name)
 	if err != nil {
 		return nil, nil
 	}

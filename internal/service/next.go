@@ -70,22 +70,15 @@ func (s *Service) Next(ctx context.Context, opts NextOptions) (*NextResult, erro
 		}
 		return len(cfg.PriorityValues)
 	}
-	paths, err := s.Store.List(ctx, "tickets/")
+	files, err := s.Store.ReadAll(ctx, "tickets/", "/ticket.md")
 	if err != nil {
 		return nil, wrapRead(err)
 	}
 
 	stages := map[string]ticket.Stage{}
 	var all []ticket.Ticket
-	for _, p := range paths {
-		if !strings.HasSuffix(p, "/ticket.md") {
-			continue
-		}
-		content, err := s.Store.ReadFile(ctx, p)
-		if err != nil {
-			continue
-		}
-		doc, err := frontmatter.Parse(content)
+	for _, file := range files {
+		doc, err := frontmatter.Parse(file.Content)
 		if err != nil {
 			continue
 		}

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/HenrikPuls/dricket/internal/config"
 )
@@ -54,19 +55,33 @@ func DiscoverFrom(ctx context.Context, dir string) (Discovery, bool, error) {
 // the current checkout. ok is false for subdirectories, plain git repositories,
 // bare repositories and directories without either config source.
 func InspectRoot(ctx context.Context, dir string) (Discovery, bool, error) {
+	return InspectRootWith(ctx, nil, dir)
+}
+
+// InspectRootWith is InspectRoot that remembers what it learns in probe (nil
+// = remember nothing): one `rev-parse` answers "inside a work tree" and "its
+// root" together, levels between a directory and its work-tree root are known
+// not to be roots without asking git, and the root found is handed to Open
+// through Options.Probe.
+func InspectRootWith(ctx context.Context, probe *Probe, dir string) (Discovery, bool, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return Discovery{}, false, fmt.Errorf("discovery: %w", err)
 	}
 	dir = abs
-	if out, err := runGitEnv(ctx, dir, Options{}, "rev-parse", "--is-inside-work-tree"); err != nil ||
-		strings.TrimSpace(out) != "true" {
+	if probe.knownNotRoot(dir) {
 		return Discovery{}, false, nil
 	}
-	root, err := runGitEnv(ctx, dir, Options{}, "rev-parse", "--show-toplevel")
-	if err != nil || !samePath(strings.TrimSpace(root), dir) {
+	out, err := runGitEnv(ctx, dir, Options{}, "rev-parse", "--is-inside-work-tree", "--show-toplevel")
+	facts := lines(out)
+	if err != nil || len(facts) != 2 || facts[0] != "true" {
 		return Discovery{}, false, nil
 	}
+	if !samePath(facts[1], dir) {
+		probe.markNotRoots(dir, facts[1])
+		return Discovery{}, false, nil
+	}
+	probe.rememberRoot(dir, facts[1])
 
 	committed, gitErr := runGitEnv(ctx, dir, Options{}, "show", "refs/heads/main:dricket.toml")
 	var data []byte
@@ -93,4 +108,71 @@ func InspectRoot(ctx context.Context, dir string) (Discovery, bool, error) {
 		}
 	}
 	return Discovery{Dir: dir, Remote: remote, Branch: branch}, true, nil
+}
+
+// Probe carries repository facts found during one call's discovery so later
+// steps do not ask git again. It lives for one process invocation; a nil
+// Probe is valid and remembers nothing.
+type Probe struct {
+	mu       sync.Mutex
+	roots    map[string]string // directory -> work-tree root git reported
+	notRoots map[string]bool   // directories known to lie inside a work tree, below its root
+}
+
+// NewProbe returns an empty Probe.
+func NewProbe() *Probe {
+	return &Probe{roots: map[string]string{}, notRoots: map[string]bool{}}
+}
+
+func (p *Probe) knownNotRoot(dir string) bool {
+	if p == nil {
+		return false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.notRoots[filepath.Clean(dir)]
+}
+
+func (p *Probe) rememberRoot(dir, top string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.roots[filepath.Clean(dir)] = filepath.Clean(top)
+}
+
+func (p *Probe) root(dir string) (string, bool) {
+	if p == nil {
+		return "", false
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	top, ok := p.roots[filepath.Clean(dir)]
+	return top, ok
+}
+
+// markNotRoots records dir and every parent below top as "not a work-tree
+// root". Nothing is recorded unless top is actually reached by file identity.
+func (p *Probe) markNotRoots(dir, top string) {
+	if p == nil {
+		return
+	}
+	var below []string
+	for cur := filepath.Clean(dir); ; {
+		if samePath(cur, top) {
+			break
+		}
+		below = append(below, cur)
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return // top is not an ancestor; learn nothing
+		}
+		cur = parent
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, d := range below {
+		p.notRoots[d] = true
+	}
 }
