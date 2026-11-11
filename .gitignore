@@ -14,8 +14,8 @@ coverage.*
 # Local dricket state
 .dricket-local/
 
-# Spike build artifact
-/spike/spike.exe
+# Spike build artifact (the .exe variant is covered by *.exe below)
+/spike/spike
 
 # local test binaries
 *.exe
