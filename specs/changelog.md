@@ -58,12 +58,16 @@ top-level CHANGELOG.md and are written at release time from this file.
 - Windows long paths and a valid default config with custom stages (R-30,
   R-31, owner requests; Drey R-27): git calls carry `core.longpaths=true`;
   `dk init` no longer writes `[transitions.agent]` — handed over 2026-11-05
-- Repository moved to the lariscus organization: module path, imports and
-  links changed from `github.com/HenrikPuls/dricket` to
-  `github.com/lariscus/dricket`; the `go install` path follows; no
-  behaviour change — handed over 2026-11-11
 
 ## Shipped
+
+### Repository move to the lariscus organization (2026-11-11)
+Module path, imports and links moved from `github.com/HenrikPuls/dricket`
+to `github.com/lariscus/dricket`; `go install` follows the new path (the
+old path fails from this release on with a module-path mismatch; the
+GitHub redirect keeps old links and clones working). No behaviour,
+protocol or format change. The accidentally committed spike build
+artifact is removed and ignored. Released in v0.6.3.
 
 ### R-30 Windows long paths (2026-11-05)
 
