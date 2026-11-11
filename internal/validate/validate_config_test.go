@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/HenrikPuls/dricket/internal/service"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 func cfgRunGit(t *testing.T, dir string, args ...string) {

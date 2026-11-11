@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/HenrikPuls/dricket/internal/config"
+	"github.com/lariscus/dricket/internal/config"
 )
 
 // Discovery is a ticket store found by walking up from a directory, the

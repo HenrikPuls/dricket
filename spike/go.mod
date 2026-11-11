@@ -1,3 +1,3 @@
-module github.com/HenrikPuls/dricket/spike
+module github.com/lariscus/dricket/spike
 
 go 1.27

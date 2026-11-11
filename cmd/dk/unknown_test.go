@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/HenrikPuls/dricket/internal/store"
+	"github.com/lariscus/dricket/internal/store"
 )
 
 func TestUnknownPushJSONError(t *testing.T) {

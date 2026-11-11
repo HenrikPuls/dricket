@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/store"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/store"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 // doneStage marks a ticket done by writing around the tool (a human's

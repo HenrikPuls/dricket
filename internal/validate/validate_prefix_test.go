@@ -5,7 +5,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/HenrikPuls/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/service"
 )
 
 func TestValidatePrefixRegister(t *testing.T) {

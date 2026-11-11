@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 const app1 = "tickets/app/0000/app-1/ticket.md"

@@ -7,9 +7,9 @@ import (
 	"flag"
 	"os"
 
-	"github.com/HenrikPuls/dricket/internal/service"
-	"github.com/HenrikPuls/dricket/internal/store"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/store"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 func selectedWorkspace(e *env) (*store.Workspace, *service.Service, *cliError) {

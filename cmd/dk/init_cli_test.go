@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/HenrikPuls/dricket/internal/config"
-	agentskills "github.com/HenrikPuls/dricket/skills"
+	"github.com/lariscus/dricket/internal/config"
+	agentskills "github.com/lariscus/dricket/skills"
 )
 
 func TestCLIInitInDirectory(t *testing.T) {

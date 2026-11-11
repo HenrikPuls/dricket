@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/HenrikPuls/dricket/internal/trace"
+	"github.com/lariscus/dricket/internal/trace"
 )
 
 // Workspace is a user-owned ticket checkout. Unlike the private store, it

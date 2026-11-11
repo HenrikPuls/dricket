@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 // commit --release writes the edited ticket and frees the claim in one

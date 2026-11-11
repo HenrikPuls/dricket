@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/profile"
-	"github.com/HenrikPuls/dricket/internal/trace"
+	"github.com/lariscus/dricket/internal/profile"
+	"github.com/lariscus/dricket/internal/trace"
 )
 
 // Retry starting values from docs/CONCEPT.md; they are options, not

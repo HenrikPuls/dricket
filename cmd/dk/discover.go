@@ -10,11 +10,11 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/HenrikPuls/dricket/internal/config"
-	"github.com/HenrikPuls/dricket/internal/service"
-	"github.com/HenrikPuls/dricket/internal/store"
-	"github.com/HenrikPuls/dricket/internal/ticket"
-	"github.com/HenrikPuls/dricket/internal/trace"
+	"github.com/lariscus/dricket/internal/config"
+	"github.com/lariscus/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/store"
+	"github.com/lariscus/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/trace"
 )
 
 // bindings is one `.dricket` file: local bindings for the directory,

@@ -7,7 +7,7 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 // ------------------------------------------------------- force-release --

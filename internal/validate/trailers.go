@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/HenrikPuls/dricket/internal/frontmatter"
-	"github.com/HenrikPuls/dricket/internal/service"
-	"github.com/HenrikPuls/dricket/internal/ticket"
-	"github.com/HenrikPuls/dricket/internal/trace"
+	"github.com/lariscus/dricket/internal/frontmatter"
+	"github.com/lariscus/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/trace"
 )
 
 // The wrapper writes the trailers Dricket-Ticket, Dricket-Epoch,

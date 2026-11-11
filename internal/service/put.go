@@ -7,10 +7,10 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/HenrikPuls/dricket/internal/config"
-	"github.com/HenrikPuls/dricket/internal/frontmatter"
-	"github.com/HenrikPuls/dricket/internal/store"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/config"
+	"github.com/lariscus/dricket/internal/frontmatter"
+	"github.com/lariscus/dricket/internal/store"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 // MaxDocument bounds a whole-ticket write: the body limit plus room for

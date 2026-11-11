@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/HenrikPuls/dricket/internal/store"
-	"github.com/HenrikPuls/dricket/internal/ticket"
-	agentskills "github.com/HenrikPuls/dricket/skills"
+	"github.com/lariscus/dricket/internal/store"
+	"github.com/lariscus/dricket/internal/ticket"
+	agentskills "github.com/lariscus/dricket/skills"
 )
 
 // --------------------------------------------------------------- init --

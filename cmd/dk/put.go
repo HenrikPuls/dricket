@@ -7,7 +7,7 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/HenrikPuls/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/service"
 )
 
 // repeatable is a string flag that may be given several times.

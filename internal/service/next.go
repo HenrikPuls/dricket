@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/frontmatter"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/frontmatter"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 // NextOptions narrows `dk next`; Claim takes the chosen ticket directly.

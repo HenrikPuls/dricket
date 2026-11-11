@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/frontmatter"
-	"github.com/HenrikPuls/dricket/internal/service"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/frontmatter"
+	"github.com/lariscus/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 // setupCodeRepo creates a git repository with commits that carry dricket

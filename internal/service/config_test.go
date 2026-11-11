@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 // pushMainFile writes a file onto the protected main branch of the bare

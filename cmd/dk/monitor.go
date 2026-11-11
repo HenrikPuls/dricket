@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/service"
 )
 
 // --------------------------------------------------------------- extend --

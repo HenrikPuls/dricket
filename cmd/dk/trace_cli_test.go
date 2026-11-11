@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/HenrikPuls/dricket/internal/trace"
+	"github.com/lariscus/dricket/internal/trace"
 )
 
 // traceStore creates a local store with n unclaimed tickets, makes it the
