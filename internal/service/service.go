@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/config"
-	"github.com/HenrikPuls/dricket/internal/frontmatter"
-	"github.com/HenrikPuls/dricket/internal/store"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/config"
+	"github.com/lariscus/dricket/internal/frontmatter"
+	"github.com/lariscus/dricket/internal/store"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 // Limits that are deliberately NOT part of dricket.toml: the grace is

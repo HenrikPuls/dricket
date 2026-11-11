@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 const driveStages = `

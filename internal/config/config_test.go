@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 func TestDefaults(t *testing.T) {

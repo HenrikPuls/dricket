@@ -1,4 +1,4 @@
-module github.com/HenrikPuls/dricket
+module github.com/lariscus/dricket
 
 go 1.27
 

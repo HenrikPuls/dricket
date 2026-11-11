@@ -3,7 +3,7 @@
 <p align="center"><strong>Tickets that live in Git. Claimed by fast-forward. Safe for humans and agents.</strong></p>
 
 <p align="center">
-  <a href="https://github.com/HenrikPuls/dricket/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/HenrikPuls/dricket/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/lariscus/dricket/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/lariscus/dricket/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: GPL v3 or later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue"></a>
   <img alt="Release: v0.5.0" src="https://img.shields.io/badge/release-v0.5.0-blue">
 </p>
@@ -87,7 +87,7 @@ in `dricket.toml` replaces the built-in stage names (ADR-0011).
 | Stage v0 (add, claim, release, ls, show, comment, set, lint) | released |
 | Stage v1 (extend, update/note, leases, validate, next, search, inbox, doctor) | released |
 | Stage v2 (dricket.toml, quotas, secret scan, force-release, init, setup-agent, profiles, priorities) | released |
-| Releases | [v0.5.0](https://github.com/HenrikPuls/dricket/releases/tag/v0.5.0) |
+| Releases | [v0.5.0](https://github.com/lariscus/dricket/releases/tag/v0.5.0) |
 | Discovery: commands inside the ticket store need no flags; `dk use` binds code repositories | released |
 | Collaborative editing: sync, restore, whole-ticket commit and exact-base CAS | released in v0.4.0 |
 
@@ -99,14 +99,14 @@ listed under "Deliberately deferred" in the concept.
 One static binary, shipped under one name: **`dk`**.
 
 **Release archive** (recommended): download from the
-[releases page](https://github.com/HenrikPuls/dricket/releases) — archives
+[releases page](https://github.com/lariscus/dricket/releases) — archives
 for linux, macOS and Windows on amd64 and arm64, plus `checksums.txt`
 (SHA-256) and a build provenance attestation.
 
 **`go install`** builds from the module and installs `dk` directly:
 
 ```console
-go install github.com/HenrikPuls/dricket/cmd/dk@v0.5.0
+go install github.com/lariscus/dricket/cmd/dk@v0.5.0
 ```
 
 Make sure the Go bin directory (`go env GOPATH` + `/bin`, on Windows

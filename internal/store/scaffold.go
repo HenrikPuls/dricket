@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/HenrikPuls/dricket/internal/trace"
+	"github.com/lariscus/dricket/internal/trace"
 )
 
 // Init sets up a ticket store the way `git init` sets up a repository:

@@ -7,8 +7,8 @@ import (
 	"flag"
 	"strings"
 
-	"github.com/HenrikPuls/dricket/internal/service"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 // ----------------------------------------------------------------- next --

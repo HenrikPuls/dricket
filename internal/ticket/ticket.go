@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/frontmatter"
+	"github.com/lariscus/dricket/internal/frontmatter"
 )
 
 // SchemaVersion is the on-disk format version this tool reads and writes.

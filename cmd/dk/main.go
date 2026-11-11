@@ -17,9 +17,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/service"
-	"github.com/HenrikPuls/dricket/internal/store"
-	"github.com/HenrikPuls/dricket/internal/trace"
+	"github.com/lariscus/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/store"
+	"github.com/lariscus/dricket/internal/trace"
 )
 
 // jsonSchemaVersion is the version of the CLI JSON envelope. It is

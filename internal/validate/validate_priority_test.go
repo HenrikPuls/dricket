@@ -5,8 +5,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/HenrikPuls/dricket/internal/service"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 func TestValidatePriorities(t *testing.T) {

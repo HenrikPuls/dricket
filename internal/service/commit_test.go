@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/HenrikPuls/dricket/internal/store"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/store"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 func setupCommit(t *testing.T) (*Service, *store.Workspace, string, string, string) {

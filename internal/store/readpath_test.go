@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/trace"
+	"github.com/lariscus/dricket/internal/trace"
 )
 
 func gitProcesses(t *testing.T) int {

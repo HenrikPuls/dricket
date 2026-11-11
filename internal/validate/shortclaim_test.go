@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/HenrikPuls/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/service"
 )
 
 // History written under short claims replays clean: the owner never

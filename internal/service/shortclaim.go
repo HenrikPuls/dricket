@@ -2,7 +2,7 @@
 
 package service
 
-import "github.com/HenrikPuls/dricket/internal/ticket"
+import "github.com/lariscus/dricket/internal/ticket"
 
 // shortClaimMark annotates the log line of a write under --claim: the
 // claim and its release share the one commit, so the line's timestamp is

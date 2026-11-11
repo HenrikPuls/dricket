@@ -9,10 +9,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/HenrikPuls/dricket/internal/profile"
-	"github.com/HenrikPuls/dricket/internal/service"
-	"github.com/HenrikPuls/dricket/internal/store"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/profile"
+	"github.com/lariscus/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/store"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 // serviceCmds are the ticket commands; each maps to one service call.

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/HenrikPuls/dricket/internal/profile"
+	"github.com/lariscus/dricket/internal/profile"
 )
 
 func initOpts(dir string) Options {

@@ -7,8 +7,8 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/HenrikPuls/dricket/internal/service"
-	"github.com/HenrikPuls/dricket/internal/validate"
+	"github.com/lariscus/dricket/internal/service"
+	"github.com/lariscus/dricket/internal/validate"
 )
 
 // runValidate implements `dk validate`: the store check by default, and

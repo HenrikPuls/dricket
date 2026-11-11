@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/frontmatter"
+	"github.com/lariscus/dricket/internal/frontmatter"
 )
 
 func TestExtensionKeyShape(t *testing.T) {

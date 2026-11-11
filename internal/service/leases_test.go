@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/config"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/config"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 func at(t time.Time) func() time.Time { return func() time.Time { return t } }

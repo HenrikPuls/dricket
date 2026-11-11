@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/frontmatter"
-	"github.com/HenrikPuls/dricket/internal/profile"
-	"github.com/HenrikPuls/dricket/internal/store"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/frontmatter"
+	"github.com/lariscus/dricket/internal/profile"
+	"github.com/lariscus/dricket/internal/store"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 // expireLease rewrites a ticket's lease into the past, as if its runner

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/secrets"
-	"github.com/HenrikPuls/dricket/internal/store"
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/secrets"
+	"github.com/lariscus/dricket/internal/store"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 // ------------------------------------------------------- secret scan ----

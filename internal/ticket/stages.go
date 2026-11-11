@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/HenrikPuls/dricket/internal/frontmatter"
+	"github.com/lariscus/dricket/internal/frontmatter"
 )
 
 // ExtensionPrefix starts the key namespace reserved for extension fields:

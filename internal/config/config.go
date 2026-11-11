@@ -17,7 +17,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/HenrikPuls/dricket/internal/ticket"
+	"github.com/lariscus/dricket/internal/ticket"
 )
 
 // ConfigSchemaVersion is the version of dricket.toml this tool reads.

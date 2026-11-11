@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/profile"
+	"github.com/lariscus/dricket/internal/profile"
 )
 
 // runGit runs git outside any store; test scaffolding only.

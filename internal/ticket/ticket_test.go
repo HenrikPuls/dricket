@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/HenrikPuls/dricket/internal/frontmatter"
+	"github.com/lariscus/dricket/internal/frontmatter"
 )
 
 // example is the front-matter example of docs/CONCEPT.md.
