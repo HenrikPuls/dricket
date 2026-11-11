@@ -6,6 +6,17 @@ and the project follows [Semantic Versioning](https://semver.org/). Versions
 below 1.0.0 may change the on-disk format and the CLI; such changes are always
 listed here.
 
+## [0.6.3] - 2026-11-11
+
+### Changed
+- The repository moved to the lariscus organization: the Go module path
+  and all links changed from `github.com/HenrikPuls/dricket` to
+  `github.com/lariscus/dricket`. No behaviour, protocol, exit-code or
+  JSON change. `go install` requires the new path from this release on
+  (the old path fails with a module-path mismatch); existing binaries
+  keep working, and the GitHub redirect keeps old links and clones
+  working.
+
 ## [0.6.2] - 2026-11-05
 
 ### Fixed

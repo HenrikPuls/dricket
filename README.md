@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/lariscus/dricket/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/lariscus/dricket/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: GPL v3 or later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue"></a>
-  <img alt="Release: v0.5.0" src="https://img.shields.io/badge/release-v0.5.0-blue">
+  <img alt="Release: v0.6.3" src="https://img.shields.io/badge/release-v0.6.3-blue">
 </p>
 
 dricket is a ticketing system with no server. Every ticket is a Markdown file in
@@ -17,7 +17,7 @@ A person can read and edit a ticket in any editor. An agent gets a small,
 strict command line that keeps it from stepping on anyone else's work. Both
 use the same files.
 
-> **Status: early release (v0.5.0).** The design is specified in
+> **Status: early release (v0.6.3).** The design is specified in
 > [docs/CONCEPT.md](docs/CONCEPT.md); stages v0 to v2 are implemented and
 > released. Later stages (messages, skills, lease services) are deliberately
 > deferred, each with the trigger that would build them. See [Status](#status).
@@ -87,7 +87,7 @@ in `dricket.toml` replaces the built-in stage names (ADR-0011).
 | Stage v0 (add, claim, release, ls, show, comment, set, lint) | released |
 | Stage v1 (extend, update/note, leases, validate, next, search, inbox, doctor) | released |
 | Stage v2 (dricket.toml, quotas, secret scan, force-release, init, setup-agent, profiles, priorities) | released |
-| Releases | [v0.5.0](https://github.com/lariscus/dricket/releases/tag/v0.5.0) |
+| Releases | [v0.6.3](https://github.com/lariscus/dricket/releases/tag/v0.6.3) |
 | Discovery: commands inside the ticket store need no flags; `dk use` binds code repositories | released |
 | Collaborative editing: sync, restore, whole-ticket commit and exact-base CAS | released in v0.4.0 |
 
@@ -106,7 +106,7 @@ for linux, macOS and Windows on amd64 and arm64, plus `checksums.txt`
 **`go install`** builds from the module and installs `dk` directly:
 
 ```console
-go install github.com/lariscus/dricket/cmd/dk@v0.5.0
+go install github.com/lariscus/dricket/cmd/dk@v0.6.3
 ```
 
 Make sure the Go bin directory (`go env GOPATH` + `/bin`, on Windows
